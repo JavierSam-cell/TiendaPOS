@@ -1359,15 +1359,11 @@ async function cargarVentaRapida() {
 }
 
 function _agregarProductoDesdeVentaRapida(p) {
-  // Granel: siempre pide peso. Pieza con código: suma 1 como el escáner.
-  // Pieza sin código (huevo, pan...): abre el modal de cantidad.
-  if (p.unidad_venta === "kg") {
-    abrirModalCantidad(p);
-  } else if (p.requiere_codigo !== false) {
-    agregarAlCarritoPorCodigo(p.codigo_barras);
-  } else {
-    abrirModalCantidad(p);
-  }
+  // Al buscar/clickear un producto en la PC (venta rápida) siempre se abre
+  // el modal de cantidad, sea granel, pieza con código o pieza sin código.
+  // El "+1 directo" solo aplica cuando el código llega de un escaneo real
+  // (lector USB, cámara o celular), vía agregarAlCarritoPorCodigo.
+  abrirModalCantidad(p);
 }
 
 function renderGridVentaRapida(productos, { modo = "top" } = {}) {
