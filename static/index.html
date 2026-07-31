@@ -221,6 +221,9 @@
         <h1 id="topbar-title">Vender</h1>
       </div>
       <div class="topbar-der">
+        <a id="btn-escaner-remoto" class="btn-campana btn-escaner-remoto" href="/escanear" title="Escáner remoto — usar el celular como lector de códigos" aria-label="Escáner remoto">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/><path d="M9 6h6"/><path d="M9 10h6"/></svg>
+        </a>
         <button id="btn-campana" class="btn-campana" title="Notificaciones" aria-label="Notificaciones" data-permiso-any="proveedores.ver,inventario.ver" style="display:none">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           <span id="badge-campana" class="badge-campana" style="display:none">0</span>
@@ -305,9 +308,10 @@
               Escanear código de barras
             </button>
             <p class="aviso-vacio-rapida" style="margin-top:10px">
-              ¿Prefieres usar tu celular como lector? Entra a
-              <b>/escanear</b> desde el navegador del teléfono (misma
-              cuenta) y el código llegará solo a esta pantalla.
+              ¿Prefieres usar tu celular como lector? Toca el ícono de
+              <b>Escáner remoto</b> junto a la campana (o entra a
+              <b>/escanear</b> en el teléfono con la misma cuenta) y el
+              código llegará solo a esta pantalla.
             </p>
             <div id="reader-overlay" class="lector-overlay">
               <div class="lector-caja">

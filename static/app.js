@@ -444,7 +444,9 @@ function cerrarSesionLocal() {
 // Navegación por pestañas
 // ---------------------------------------------------------
 document.querySelectorAll(".tab-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
+  btn.addEventListener("click", (e) => {
+    // Enlaces del menú (ej. Escáner remoto → /escanear): no son pestañas.
+    if (!btn.dataset.tab) return;
     document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
     document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
     btn.classList.add("active");

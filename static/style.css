@@ -184,7 +184,10 @@ td.celda-precio, td.celda-codigo, td.celda-cantidad,
   font-family: var(--font-ui);
   font-weight: 600;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
+  text-decoration: none; /* también se usa en <a> (Escáner remoto) */
 }
+a.tab-btn { color: rgba(255,255,255,0.66); }
+a.tab-btn:hover { color: #fff; }
 .tab-btn svg { flex-shrink: 0; opacity: 0.85; }
 .tab-btn:hover { background: rgba(255,255,255,0.06); color: #fff; }
 .tab-btn.active {
@@ -325,8 +328,12 @@ td.celda-precio, td.celda-codigo, td.celda-cantidad,
   color: var(--text-mute);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+  text-decoration: none; /* también se usa en <a> (Escáner remoto) */
+  flex-shrink: 0;
 }
 .btn-campana:hover { background: var(--accent-soft); color: var(--accent-darker); border-color: var(--accent); }
+a.btn-campana { color: var(--text-mute); }
+a.btn-campana:hover { color: var(--accent-darker); }
 .btn-campana.tiene-alertas { color: var(--warning); border-color: var(--warning-soft); }
 .btn-campana.tiene-urgentes { color: var(--danger); border-color: var(--danger-soft); animation: campana-sacude 3.2s ease-in-out infinite; }
 @keyframes campana-sacude {
