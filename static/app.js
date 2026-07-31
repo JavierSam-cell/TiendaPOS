@@ -445,16 +445,23 @@ document.querySelectorAll(".nav-grupo-toggle").forEach((toggle) => {
 // El overlay (.lector-overlay) se muestra fijo y centrado en la pantalla
 // -ya no queda "hasta abajo" del contenido de la página-.
 //
-// Para la lectura en sí se usa, cuando el navegador lo soporta, la API
-// nativa BarcodeDetector: lee sobre el cuadro completo de la cámara (no
-// solo un recuadro chico), por lo que detecta el código casi al instante,
-// sin necesidad de centrarlo con precisión. Si el navegador no la soporta
-// (por ejemplo Safari/iOS), se usa Html5Qrcode como respaldo.
+// Para la lectura en sí se usa BarcodeDetector: lee sobre el cuadro
+// completo de la cámara (no solo un recuadro chico), por lo que detecta
+// el código casi al instante, sin necesidad de centrarlo con precisión.
+// El script "barcode-detector" cargado en index.html garantiza que esta
+// función exista igual en Android, iPhone y cualquier navegador (ver
+// comentario más abajo).
 const FORMATOS_CODIGO_BARRAS = [
   "ean_13", "ean_8", "upc_a", "upc_e",
   "code_128", "code_39", "code_93", "codabar", "itf", "qr_code",
 ];
 
+// El script "barcode-detector" (polyfill) cargado en index.html garantiza
+// que window.BarcodeDetector exista en TODOS los navegadores: si el
+// celular ya lo trae de fábrica (la mayoría de Android/Chrome), lo usa
+// directo; si no (iPhone/Safari, navegadores viejos), lo rellena con el
+// mismo motor pero corriendo en WebAssembly. Así el escaneo es igual de
+// rápido en cualquier equipo, sin necesitar una librería de respaldo.
 function iniciarEscaner(readerId, onResultado) {
   const el = document.getElementById(readerId);
   const overlay = document.getElementById(readerId + "-overlay");
@@ -470,11 +477,7 @@ function iniciarEscaner(readerId, onResultado) {
     onResultado(codigo);
   };
 
-  if ("BarcodeDetector" in window) {
-    iniciarLectorNativo(el, terminar);
-  } else {
-    iniciarLectorHtml5Qrcode(el, readerId, terminar);
-  }
+  iniciarLectorNativo(el, terminar);
 }
 
 function detenerEscaner(readerId) {
@@ -498,14 +501,7 @@ function iniciarLectorNativo(el, onResultado) {
 
   let detenido = false;
   let stream = null;
-  let detector;
-  try {
-    detector = new BarcodeDetector({ formats: FORMATOS_CODIGO_BARRAS });
-  } catch (e) {
-    // Formatos no soportados por este navegador: usar el respaldo.
-    iniciarLectorHtml5Qrcode(el, el.id, onResultado);
-    return;
-  }
+  const detector = new BarcodeDetector({ formats: FORMATOS_CODIGO_BARRAS });
 
   el._detener = () => {
     detenido = true;
@@ -513,11 +509,29 @@ function iniciarLectorNativo(el, onResultado) {
   };
 
   navigator.mediaDevices
-    .getUserMedia({ video: { facingMode: "environment" } })
+    .getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+    })
     .then((s) => {
       stream = s;
       video.srcObject = s;
       video.play();
+
+      // Enfoque continuo: sin esto, muchos Android dejan la cámara con
+      // foco fijo y el código de barras nunca queda nítido de cerca.
+      const [pista] = s.getVideoTracks();
+      const capacidades = pista.getCapabilities ? pista.getCapabilities() : {};
+      if (capacidades.focusMode && capacidades.focusMode.includes("continuous")) {
+        pista.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
+      }
+      // Linterna, si el equipo la soporta (ayuda mucho con poca luz).
+      if (capacidades.torch) {
+        mostrarBotonLinterna(el, pista);
+      }
 
       const detectarCuadro = () => {
         if (detenido) return;
@@ -543,23 +557,21 @@ function iniciarLectorNativo(el, onResultado) {
     });
 }
 
-// Respaldo para navegadores sin BarcodeDetector (p. ej. Safari/iOS).
-function iniciarLectorHtml5Qrcode(el, readerId, onResultado) {
-  el.innerHTML = "";
-  const scanner = new Html5Qrcode(readerId);
-  el._detener = () => scanner.stop().catch(() => {});
-
-  scanner
-    .start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 250, height: 150 } },
-      (decodedText) => onResultado(decodedText),
-      () => {} // errores de lectura frame a frame, se ignoran
-    )
-    .catch((err) => {
-      toast("No se pudo acceder a la cámara: " + err, true);
-      detenerEscaner(readerId);
-    });
+// Botón de linterna dentro del recuadro de la cámara (solo si el equipo
+// la soporta). Ayuda mucho a leer el código cuando hay poca luz.
+function mostrarBotonLinterna(el, pista) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "lector-linterna";
+  btn.textContent = "🔦";
+  btn.setAttribute("aria-label", "Encender/apagar linterna");
+  let encendida = false;
+  btn.addEventListener("click", () => {
+    encendida = !encendida;
+    pista.applyConstraints({ advanced: [{ torch: encendida }] }).catch(() => {});
+    btn.classList.toggle("activa", encendida);
+  });
+  el.appendChild(btn);
 }
 
 document.querySelectorAll("[data-cerrar-lector]").forEach((btn) => {
