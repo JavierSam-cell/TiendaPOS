@@ -610,8 +610,8 @@ def sugerencia_pedido_pdf(
 
     Usa las cantidades que el usuario ajustó en el modal (no solo la
     sugerencia automática). Solo incluye filas con cantidad > 0.
-    Columnas orientadas al proveedor: producto, cantidad, costo, subtotal
-    y motivo. Sin stock interno (mínimo/máximo/actual/sugerido).
+    Columnas orientadas al proveedor: producto, cantidad, costo y subtotal.
+    Sin stock interno ni motivo (mínimo/máximo/actual/sugerido).
     """
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.units import cm
@@ -630,12 +630,6 @@ def sugerencia_pedido_pdf(
     items_validos = [it for it in pedido.items if it.cantidad and it.cantidad > 0]
     if not items_validos:
         raise HTTPException(400, "Selecciona al menos un producto con cantidad mayor a 0")
-
-    # Motivo sugerido por producto (si el ítem aún está en la sugerencia).
-    sugeridos = {
-        it.producto_id: it
-        for it in _calcular_sugerencia_pedido(db, proveedor)
-    }
 
     filas_datos = []
     total_gasto = 0.0
@@ -657,10 +651,6 @@ def sugerencia_pedido_pdf(
         subtotal = round(costo * it.cantidad, 2)
         total_gasto += subtotal
         unidad = "pza" if producto.unidad_venta == "pieza" else "kg"
-        motivo = ""
-        sug = sugeridos.get(producto.id)
-        if sug:
-            motivo = sug.motivo or ""
 
         # Cantidad legible: enteros sin decimales inútiles; kg con hasta 3.
         if producto.unidad_venta == "pieza":
@@ -673,7 +663,6 @@ def sugerencia_pedido_pdf(
             "cantidad": cant_txt,
             "costo": costo,
             "subtotal": subtotal,
-            "motivo": motivo,
         })
 
     try:
@@ -745,13 +734,12 @@ def sugerencia_pedido_pdf(
         elementos.append(Paragraph(" · ".join(meta_lineas), meta_style))
         elementos.append(Spacer(1, 0.45 * cm))
 
-        # Tabla: Producto | Cantidad | Costo c/u | Subtotal | Motivo
+        # Tabla: Producto | Cantidad | Costo c/u | Subtotal
         encabezados = [
             Paragraph("Producto", encabezado_style),
             Paragraph("Cantidad a pedir", encabezado_r_style),
             Paragraph("Costo c/u", encabezado_r_style),
             Paragraph("Subtotal", encabezado_r_style),
-            Paragraph("Motivo", encabezado_style),
         ]
         filas = [encabezados]
         for f in filas_datos:
@@ -760,19 +748,17 @@ def sugerencia_pedido_pdf(
                 Paragraph(_escapar_pdf(f["cantidad"]), celda_r_style),
                 Paragraph(_moneda(f["costo"]), celda_r_style),
                 Paragraph(_moneda(f["subtotal"]), celda_r_style),
-                Paragraph(_escapar_pdf(f["motivo"] or "—"), celda_style),
             ])
 
         # Fila de total
         filas.append([
             Paragraph("", celda_style),
-            Paragraph("", celda_style),
             Paragraph("Gasto total estimado", total_style),
-            Paragraph(_moneda(total_gasto), total_style),
             Paragraph("", celda_style),
+            Paragraph(_moneda(total_gasto), total_style),
         ])
 
-        anchos = [6.8 * cm, 3.0 * cm, 2.4 * cm, 2.6 * cm, 3.0 * cm]
+        anchos = [9.0 * cm, 3.4 * cm, 2.6 * cm, 2.8 * cm]
         tabla = Table(filas, colWidths=anchos, repeatRows=1)
         estilo_tabla = [
             ("BACKGROUND", (0, 0), (-1, 0), AZUL),
@@ -791,6 +777,7 @@ def sugerencia_pedido_pdf(
             ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e3f7ef")),
             ("LINEABOVE", (0, -1), (-1, -1), 1.2, AZUL),
             ("SPAN", (0, -1), (1, -1)),
+            ("ALIGN", (1, -1), (1, -1), "RIGHT"),
         ]
         tabla.setStyle(TableStyle(estilo_tabla))
         elementos.append(tabla)
