@@ -304,7 +304,13 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M3 17v2a2 2 0 0 0 2 2h2M21 7V5a2 2 0 0 0-2-2h-2M21 17v2a2 2 0 0 1-2 2h-2M7 12h10"/></svg>
               Escanear código de barras
             </button>
-            <div id="reader" style="width:100%; max-width:400px; margin-top:12px;"></div>
+            <div id="reader-overlay" class="lector-overlay">
+              <div class="lector-caja">
+                <button type="button" class="lector-cerrar-x" data-cerrar-lector="reader" aria-label="Cerrar cámara">✕</button>
+                <p class="lector-titulo">Escaneando…</p>
+                <div id="reader" class="lector-video-wrap"></div>
+              </div>
+            </div>
             <!-- Campo oculto: los lectores USB/teclado siguen escribiendo aquí si hace falta -->
             <input id="input-codigo" type="text" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" tabindex="-1" aria-hidden="true">
           </div>
@@ -430,7 +436,13 @@
                 <option value="">Sin proveedor asignado</option>
               </select>
             </div>
-            <div id="reader-alta" style="width:100%; max-width:400px;"></div>
+            <div id="reader-alta-overlay" class="lector-overlay">
+              <div class="lector-caja">
+                <button type="button" class="lector-cerrar-x" data-cerrar-lector="reader-alta" aria-label="Cerrar cámara">✕</button>
+                <p class="lector-titulo">Escaneando…</p>
+                <div id="reader-alta" class="lector-video-wrap"></div>
+              </div>
+            </div>
             <div class="modal-acciones" style="margin-top:12px">
               <button type="button" id="btn-cancelar-edicion" class="btn-secondary" style="display:none">Cancelar edición</button>
               <button type="submit" class="btn-primary" id="btn-guardar-producto">Guardar producto</button>
@@ -631,7 +643,13 @@
               <label for="inv-motivo">Motivo</label>
               <input id="inv-motivo" placeholder="Motivo (opcional)">
             </div>
-            <div id="reader-inv" style="width:100%; max-width:400px;"></div>
+            <div id="reader-inv-overlay" class="lector-overlay">
+              <div class="lector-caja">
+                <button type="button" class="lector-cerrar-x" data-cerrar-lector="reader-inv" aria-label="Cerrar cámara">✕</button>
+                <p class="lector-titulo">Escaneando…</p>
+                <div id="reader-inv" class="lector-video-wrap"></div>
+              </div>
+            </div>
             <button type="submit" class="btn-primary">Registrar movimiento</button>
           </form>
         </div>

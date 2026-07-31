@@ -1108,6 +1108,65 @@ tbody tr:hover { background: #fafbfd; }
   z-index: 200;
   padding: 20px;
 }
+
+/* Overlay centrado para el escáner de código de barras (cámara).
+   Antes el <div id="reader"> quedaba en su lugar dentro del flujo normal
+   de la página, así que en el celular la cámara aparecía hasta abajo,
+   fuera de la vista. Ahora se muestra fijo y centrado en la pantalla. */
+.lector-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 10, 20, 0.72);
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+  padding: 20px;
+}
+.lector-overlay.mostrar { display: flex; }
+.lector-caja {
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: var(--shadow-ink);
+  position: relative;
+}
+.lector-titulo {
+  text-align: center;
+  margin: 0 0 10px;
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+.lector-video-wrap {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+}
+.lector-video-wrap video {
+  width: 100% !important;
+  border-radius: 12px;
+  display: block;
+}
+.lector-cerrar-x {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: var(--paper);
+  box-shadow: var(--shadow-ink);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text);
+}
+.lector-cerrar-x:hover { color: var(--danger); }
 .modal-box {
   background: var(--paper);
   border-radius: var(--radius-lg);

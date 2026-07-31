@@ -442,33 +442,129 @@ document.querySelectorAll(".nav-grupo-toggle").forEach((toggle) => {
 // ---------------------------------------------------------
 // Escáner de código de barras (usa la cámara del celular)
 // ---------------------------------------------------------
-function iniciarEscaner(readerId, onResultado, botonId) {
+// El overlay (.lector-overlay) se muestra fijo y centrado en la pantalla
+// -ya no queda "hasta abajo" del contenido de la página-.
+//
+// Para la lectura en sí se usa, cuando el navegador lo soporta, la API
+// nativa BarcodeDetector: lee sobre el cuadro completo de la cámara (no
+// solo un recuadro chico), por lo que detecta el código casi al instante,
+// sin necesidad de centrarlo con precisión. Si el navegador no la soporta
+// (por ejemplo Safari/iOS), se usa Html5Qrcode como respaldo.
+const FORMATOS_CODIGO_BARRAS = [
+  "ean_13", "ean_8", "upc_a", "upc_e",
+  "code_128", "code_39", "code_93", "codabar", "itf", "qr_code",
+];
+
+function iniciarEscaner(readerId, onResultado) {
   const el = document.getElementById(readerId);
-  const yaVisible = el.style.display === "block";
-  if (yaVisible) {
-    el.style.display = "none";
-    if (el._scanner) el._scanner.stop().catch(() => {});
+  const overlay = document.getElementById(readerId + "-overlay");
+  const yaAbierto = overlay.classList.contains("mostrar");
+  if (yaAbierto) {
+    detenerEscaner(readerId);
     return;
   }
-  el.style.display = "block";
+  overlay.classList.add("mostrar");
+
+  const terminar = (codigo) => {
+    detenerEscaner(readerId);
+    onResultado(codigo);
+  };
+
+  if ("BarcodeDetector" in window) {
+    iniciarLectorNativo(el, terminar);
+  } else {
+    iniciarLectorHtml5Qrcode(el, readerId, terminar);
+  }
+}
+
+function detenerEscaner(readerId) {
+  const el = document.getElementById(readerId);
+  const overlay = document.getElementById(readerId + "-overlay");
+  overlay.classList.remove("mostrar");
+  if (el._detener) {
+    el._detener();
+    el._detener = null;
+  }
+}
+
+// Lector rápido con la API nativa del navegador (BarcodeDetector).
+function iniciarLectorNativo(el, onResultado) {
+  el.innerHTML = "";
+  const video = document.createElement("video");
+  video.setAttribute("playsinline", "");
+  video.setAttribute("muted", "");
+  video.muted = true;
+  el.appendChild(video);
+
+  let detenido = false;
+  let stream = null;
+  let detector;
+  try {
+    detector = new BarcodeDetector({ formats: FORMATOS_CODIGO_BARRAS });
+  } catch (e) {
+    // Formatos no soportados por este navegador: usar el respaldo.
+    iniciarLectorHtml5Qrcode(el, el.id, onResultado);
+    return;
+  }
+
+  el._detener = () => {
+    detenido = true;
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+  };
+
+  navigator.mediaDevices
+    .getUserMedia({ video: { facingMode: "environment" } })
+    .then((s) => {
+      stream = s;
+      video.srcObject = s;
+      video.play();
+
+      const detectarCuadro = () => {
+        if (detenido) return;
+        detector
+          .detect(video)
+          .then((codigos) => {
+            if (detenido) return;
+            if (codigos.length > 0) {
+              onResultado(codigos[0].rawValue);
+              return;
+            }
+            requestAnimationFrame(detectarCuadro);
+          })
+          .catch(() => {
+            if (!detenido) requestAnimationFrame(detectarCuadro);
+          });
+      };
+      requestAnimationFrame(detectarCuadro);
+    })
+    .catch((err) => {
+      toast("No se pudo acceder a la cámara: " + err, true);
+      detenerEscaner(el.id);
+    });
+}
+
+// Respaldo para navegadores sin BarcodeDetector (p. ej. Safari/iOS).
+function iniciarLectorHtml5Qrcode(el, readerId, onResultado) {
+  el.innerHTML = "";
   const scanner = new Html5Qrcode(readerId);
-  el._scanner = scanner;
+  el._detener = () => scanner.stop().catch(() => {});
 
   scanner
     .start(
       { facingMode: "environment" },
       { fps: 10, qrbox: { width: 250, height: 150 } },
-      (decodedText) => {
-        onResultado(decodedText);
-        scanner.stop().then(() => (el.style.display = "none"));
-      },
+      (decodedText) => onResultado(decodedText),
       () => {} // errores de lectura frame a frame, se ignoran
     )
     .catch((err) => {
       toast("No se pudo acceder a la cámara: " + err, true);
-      el.style.display = "none";
+      detenerEscaner(readerId);
     });
 }
+
+document.querySelectorAll("[data-cerrar-lector]").forEach((btn) => {
+  btn.addEventListener("click", () => detenerEscaner(btn.dataset.cerrarLector));
+});
 
 /**
  * Detecta cuando el usuario terminó de ingresar un código de barras en un
