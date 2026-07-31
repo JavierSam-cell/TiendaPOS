@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POS — Mi Tienda</title>
+<link rel="stylesheet" href="/static/style.css?v=2">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<section id="pantalla-login">
+  <div class="login-shell">
+
+    <div class="login-marca">
+      <div class="login-marca-lockup">
+        <div class="login-marca-cuadro">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        </div>
+        <span class="nombre-tienda-ui">Mi Tienda</span>
+      </div>
+
+      <h1 class="login-marca-titulo">El punto de venta pensado para tu negocio</h1>
+      <p class="login-marca-texto">Cobra, controla tu inventario y conoce tu utilidad real, todo desde un mismo lugar — sin instalar nada complicado.</p>
+
+      <ul class="login-marca-lista">
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Cobro con escaneo de código de barras</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Control de inventario y alertas de stock</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Reportes de ventas y utilidad al instante</li>
+      </ul>
+
+      <div class="login-recibo" aria-hidden="true">
+        <div class="login-recibo-escaneo"></div>
+        <div class="login-recibo-cab"><span class="nombre-tienda-ui nombre-tienda-ticket">MI TIENDA</span><span>#00482</span></div>
+        <div class="login-recibo-sub">TICKET DE VENTA</div>
+        <div class="login-recibo-linea"></div>
+        <div class="login-recibo-item"><span>Refresco 600ml</span><span>28.00</span></div>
+        <div class="login-recibo-item"><span>Pan dulce x3</span><span>21.00</span></div>
+        <div class="login-recibo-item"><span>Café soluble</span><span>62.00</span></div>
+        <div class="login-recibo-linea"></div>
+        <div class="login-recibo-total"><span>TOTAL</span><span>$111.00</span></div>
+        <div class="login-recibo-barras"></div>
+      </div>
+    </div>
+
+    <div class="login-box">
+      <h1>Bienvenido de nuevo</h1>
+      <p>Inicia sesión para continuar</p>
+      <form id="form-login">
+        <div class="field">
+          <label for="login-username">Usuario</label>
+          <input id="login-username" placeholder="Usuario" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="login-password">Contraseña</label>
+          <div class="password-field">
+            <input id="login-password" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+            <button type="button" class="toggle-password" data-toggle-password="login-password" aria-label="Mostrar contraseña"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+        <button type="submit" class="btn-primary btn-grande">Entrar</button>
+      </form>
+      <p class="login-hint">Usuario inicial: <b>admin</b> · clave: <b>admin123</b> (cámbiala después)</p>
+    </div>
+
+  </div>
+</section>
+
+<div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+<button id="btn-mostrar-sidebar" class="btn-mostrar-sidebar" title="Mostrar menú" aria-label="Mostrar menú">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+</button>
+
+<div id="app" class="app-shell" style="display:none">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-marca">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+      </div>
+      <div class="sidebar-brand-texto">
+        <span class="nombre-tienda-ui">Mi Tienda</span>
+        <small>Punto de venta</small>
+      </div>
+      <button id="btn-cerrar-menu" class="btn-cerrar-menu" title="Cerrar menú" aria-label="Cerrar menú">✕</button>
+    </div>
+    <div class="sidebar-barcode"></div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-seccion">
+        <button class="tab-btn tab-btn-notificaciones" data-tab="notificaciones" data-titulo="Notificaciones" data-permiso-any="proveedores.ver,inventario.ver">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          Notificaciones
+          <span id="badge-notificaciones" class="badge-notificaciones" style="display:none">0</span>
+        </button>
+      </div>
+
+      <div class="nav-seccion">
+        <div class="nav-seccion-titulo">Operación</div>
+
+        <button class="tab-btn active" data-tab="venta" data-titulo="Vender">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h.01M10 15h4"/></svg>
+          Vender
+        </button>
+
+        <div class="nav-grupo" data-permiso-any="productos.ver,productos.agregar,productos.editar,productos.baja,productos.importar">
+          <button type="button" class="nav-grupo-toggle" data-grupo="grupo-productos">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+            <span>Productos</span>
+            <svg class="nav-grupo-flecha" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="nav-grupo-items" id="grupo-productos">
+            <button class="tab-btn" data-tab="productos" data-titulo="Agregar producto" data-permiso="productos.agregar">Agregar producto</button>
+            <button class="tab-btn" data-tab="catalogo" data-titulo="Catálogo de productos" data-permiso-any="productos.ver,productos.editar,productos.baja,productos.importar">Catálogo de productos</button>
+          </div>
+        </div>
+
+        <div class="nav-grupo" data-permiso-any="inventario.ver,inventario.movimiento">
+          <button type="button" class="nav-grupo-toggle" data-grupo="grupo-inventario">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="m7.5 4.2 9 5.2"/></svg>
+            <span>Inventario</span>
+            <svg class="nav-grupo-flecha" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="nav-grupo-items" id="grupo-inventario">
+            <button class="tab-btn" data-tab="inventario" data-titulo="Agregar inventario" data-permiso="inventario.movimiento">Agregar inventario</button>
+            <button class="tab-btn" data-tab="movimientos" data-titulo="Movimiento de inventario" data-permiso="inventario.ver">Movimiento de inventario</button>
+            <button class="tab-btn" data-tab="alertas-stock" data-titulo="Alertas de stock" data-permiso="inventario.ver">Alertas de stock</button>
+          </div>
+        </div>
+
+        <div class="nav-grupo" data-permiso-any="proveedores.ver,proveedores.agregar,proveedores.editar,proveedores.baja,proveedores.sugerencia">
+          <button type="button" class="nav-grupo-toggle" data-grupo="grupo-proveedores">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+            <span>Proveedores</span>
+            <svg class="nav-grupo-flecha" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="nav-grupo-items" id="grupo-proveedores">
+            <button class="tab-btn" data-tab="proveedores" data-titulo="Agregar proveedor" data-permiso="proveedores.agregar">Agregar proveedor</button>
+            <button class="tab-btn" data-tab="lista-proveedores" data-titulo="Lista de proveedores" data-permiso-any="proveedores.ver,proveedores.editar,proveedores.baja,proveedores.sugerencia">Lista de proveedores</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-seccion">
+        <div class="nav-seccion-titulo">Finanzas</div>
+        <div class="nav-grupo" data-permiso-any="gastos.ver,gastos.agregar,gastos.eliminar">
+          <button type="button" class="nav-grupo-toggle" data-grupo="grupo-gastos">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>
+            <span>Gastos</span>
+            <svg class="nav-grupo-flecha" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="nav-grupo-items" id="grupo-gastos">
+            <button class="tab-btn" data-tab="gastos" data-titulo="Agregar gasto" data-permiso="gastos.agregar">Agregar gasto</button>
+            <button class="tab-btn" data-tab="ver-gastos" data-titulo="Ver gastos" data-permiso-any="gastos.ver,gastos.eliminar">Ver gastos</button>
+          </div>
+        </div>
+        <button class="tab-btn" data-tab="corte-caja" data-titulo="Corte de caja" data-permiso-any="caja.cortar,caja.ver">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+          Corte de caja
+        </button>
+      </div>
+
+      <div class="nav-seccion">
+        <div class="nav-seccion-titulo">Reportes</div>
+        <button class="tab-btn" data-tab="reportes" data-titulo="Reportes" data-permiso-any="reportes.ver,reportes.cancelar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16v-5"/><path d="M12 16V8"/><path d="M17 16v-9"/></svg>
+          Reportes
+        </button>
+      </div>
+
+      <div class="nav-seccion solo-admin">
+        <div class="nav-seccion-titulo">Administración</div>
+        <button class="tab-btn solo-admin" data-tab="usuarios" data-titulo="Usuarios">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Usuarios
+        </button>
+        <button class="tab-btn solo-admin" data-tab="permisos" data-titulo="Permisos">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>
+          Permisos
+        </button>
+        <button class="tab-btn solo-admin" data-tab="configuracion" data-titulo="Configuración">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          Configuración
+        </button>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-user-avatar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div id="usuario-info"></div>
+      </div>
+      <button id="btn-logout" class="btn-logout">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Cerrar sesión
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===================== COLUMNA PRINCIPAL ===================== -->
+  <div class="main-shell">
+    <header class="topbar">
+      <div class="topbar-izq">
+        <div class="topbar-marca-mini">
+          <div class="marca-cuadro">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          </div>
+          <span class="nombre-tienda-ui">Mi Tienda</span>
+        </div>
+        <button id="btn-abrir-menu" class="btn-abrir-menu" title="Abrir menú" aria-label="Abrir menú">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <button id="btn-colapsar-sidebar" class="btn-colapsar-sidebar" title="Ocultar/mostrar menú" aria-label="Ocultar/mostrar menú">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        </button>
+        <h1 id="topbar-title">Vender</h1>
+      </div>
+      <div class="topbar-der">
+        <button id="btn-campana" class="btn-campana" title="Notificaciones" aria-label="Notificaciones" data-permiso-any="proveedores.ver,inventario.ver" style="display:none">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span id="badge-campana" class="badge-campana" style="display:none">0</span>
+        </button>
+        <div class="topbar-clock" id="reloj-topbar"></div>
+      </div>
+    </header>
+
+    <main>
+
+      <!-- ===================== TAB NOTIFICACIONES ===================== -->
+      <section id="tab-notificaciones" class="tab-content">
+        <!-- Resumen del día: foto rápida para el dueño / cajero -->
+        <div class="panel" id="panel-resumen-dia">
+          <div class="titulo-con-filtro">
+            <h2>Resumen de hoy</h2>
+            <button type="button" id="btn-refrescar-resumen-dia" class="btn-secondary" title="Actualizar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Actualizar</button>
+          </div>
+          <div class="resumen-cards" id="resumen-dia-cards">
+            <div class="card"><span id="rd-ingresos">$0</span><label>Vendiste hoy</label></div>
+            <div class="card"><span id="rd-ventas">0</span><label>Ventas</label></div>
+            <div class="card"><span id="rd-ticket">$0</span><label>Ticket promedio</label></div>
+            <div class="card"><span id="rd-efectivo">$0</span><label>Efectivo</label></div>
+            <div class="card"><span id="rd-tarjeta">$0</span><label>Tarjeta</label></div>
+            <div class="card"><span id="rd-transferencia">$0</span><label>Transferencia</label></div>
+          </div>
+          <div id="rd-top-wrap" style="margin-top:8px">
+            <p class="venta-rapida-subtitulo" style="margin-bottom:6px">Más vendidos hoy</p>
+            <p id="rd-top-vacio" class="aviso-vacio-rapida" style="display:none;margin:0">Aún no hay ventas hoy.</p>
+            <ul id="rd-top-lista" style="margin:0;padding-left:18px;color:var(--text-mute);font-size:0.9rem"></ul>
+          </div>
+          <p id="rd-extra" class="aviso-vacio-rapida" style="margin:12px 0 0"></p>
+        </div>
+
+        <div class="panel panel-notificaciones-header">
+          <div>
+            <h2>Centro de notificaciones</h2>
+            <p class="notificaciones-subtitulo">
+              <span class="pulso-en-vivo"></span>
+              Siempre en tiempo real: proveedores que pasan hoy y productos con stock bajo, según tu configuración.
+            </p>
+          </div>
+          <button id="btn-refrescar-notificaciones" class="btn-secondary" title="Actualizar ahora">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Actualizar
+          </button>
+        </div>
+
+        <div id="lista-notificaciones" class="lista-notificaciones"></div>
+
+        <div id="notificaciones-vacio" class="panel notificaciones-vacio" style="display:none">
+          <div class="notificaciones-vacio-icono"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12v0a2.9 2.9 0 0 0 3.12-1.96L22 2Z"/><path d="M17 8.5a5 5 0 0 0-4-1.5 5 5 0 0 0-4 1.5"/><path d="M8 14.5a5 5 0 0 0 4 1.5 5 5 0 0 0 4-1.5"/></svg></div>
+          <h3>Todo al día</h3>
+          <p>No tienes notificaciones pendientes por ahora. En cuanto pase el día de visita de un proveedor o baje el stock de algún producto, aparecerá aquí.</p>
+        </div>
+      </section>
+
+      <!-- ===================== TAB VENTA ===================== -->
+      <section id="tab-venta" class="tab-content active">
+        <div>
+          <!-- Buscador global: nombre o código (lo más usado cuando no se puede escanear) -->
+          <div class="panel" id="panel-venta-rapida">
+            <h2>Buscar producto</h2>
+            <div class="field">
+              <label for="buscar-venta-rapida">Nombre o código de barras</label>
+              <input
+                id="buscar-venta-rapida"
+                placeholder="Ej. coca, huevo, 750123…  — Enter para agregar"
+                autocomplete="off"
+                autofocus
+              >
+            </div>
+            <p id="venta-rapida-subtitulo" class="venta-rapida-subtitulo">Los 9 más vendidos</p>
+            <div id="grid-venta-rapida" class="grid-venta-rapida"></div>
+            <p id="aviso-sin-resultados-rapida" class="aviso-vacio-rapida" style="display:none">No se encontró ningún producto con ese nombre o código.</p>
+          </div>
+
+          <div class="panel">
+            <h2>Escanear producto</h2>
+            <button id="btn-scan" class="btn-primary btn-grande">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M3 17v2a2 2 0 0 0 2 2h2M21 7V5a2 2 0 0 0-2-2h-2M21 17v2a2 2 0 0 1-2 2h-2M7 12h10"/></svg>
+              Escanear código de barras
+            </button>
+            <div id="reader" style="width:100%; max-width:400px; margin-top:12px;"></div>
+            <!-- Campo oculto: los lectores USB/teclado siguen escribiendo aquí si hace falta -->
+            <input id="input-codigo" type="text" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" tabindex="-1" aria-hidden="true">
+          </div>
+
+
+          <!-- Aviso de producto no encontrado + alta rápida (solo admin) -->
+          <div id="alerta-no-encontrado" class="panel alerta-panel" style="display:none">
+            <p id="texto-no-encontrado"></p>
+            <form id="form-alta-rapida" style="display:none">
+              <input type="hidden" id="rapido-codigo">
+              <div class="field">
+                <label for="rapido-nombre">Nombre del producto <span class="field-req">*</span></label>
+                <input id="rapido-nombre" placeholder="Nombre del producto *" required>
+              </div>
+              <div class="field">
+                <label for="rapido-precio">Precio de venta <span class="field-req">*</span></label>
+                <input id="rapido-precio" type="number" step="0.01" placeholder="Precio de venta *" required>
+              </div>
+              <div class="field">
+                <label for="rapido-stock">Stock inicial</label>
+                <input id="rapido-stock" type="number" placeholder="Stock inicial" value="1">
+              </div>
+              <button type="submit" class="btn-primary">Guardar y agregar a la venta</button>
+              <button type="button" id="btn-cancelar-alta-rapida" class="btn-secondary">Cancelar</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Panel tipo "recibo" -->
+        <div class="panel-recibo">
+          <h2>Ticket de venta</h2>
+          <div class="tabla-wrap">
+<table id="tabla-carrito">
+            <thead>
+              <tr><th>Producto</th><th>Precio</th><th>Cant.</th><th>Subtotal</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+</div>
+          <div class="total-venta">Total: $<span id="total-carrito">0.00</span></div>
+
+          <div class="linea-pago">
+            <label for="metodo-pago">Método de pago</label>
+            <select id="metodo-pago">
+              <option value="efectivo">Efectivo</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="transferencia">Transferencia</option>
+            </select>
+          </div>
+
+          <button id="btn-cobrar" class="btn-primary btn-grande">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            Cobrar venta
+          </button>
+        </div>
+      </section>
+
+      <!-- ===================== TAB PRODUCTOS (solo alta) ===================== -->
+      <section id="tab-productos" class="tab-content">
+        <div class="panel">
+          <h2 id="titulo-form-producto">Alta de producto</h2>
+          <p class="aviso-vacio-rapida">Da de alta un nuevo producto. Para ver, buscar o editar productos existentes, ve a <b>Catálogo</b>.</p>
+          <form id="form-producto">
+            <input type="hidden" id="prod-id">
+
+            <div class="field">
+              <label for="prod-unidad-venta">Unidad de venta</label>
+              <select id="prod-unidad-venta">
+                <option value="pieza">Se vende por pieza</option>
+                <option value="kg">Se vende a granel (por kilogramo)</option>
+              </select>
+            </div>
+
+            <label class="checkbox-inline">
+              <input type="checkbox" id="prod-tiene-codigo" checked> Tiene código de barras
+            </label>
+            <p id="aviso-codigo-interno" class="aviso-codigo-interno" style="display:none">
+              Sin código de barras: se le asignará un código interno automático y aparecerá
+              como botón en "Venta rápida" dentro de la pantalla de Vender (ideal para
+              tortillas, verdura, huevo suelto, pan, jamón por kilo, etc).
+            </p>
+
+            <div class="field">
+              <label for="prod-codigo">Código de barras <span class="field-req">*</span></label>
+              <input id="prod-codigo" placeholder="Código de barras *" required>
+            </div>
+            <button type="button" id="btn-scan-alta" class="btn-primary btn-grande">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M3 17v2a2 2 0 0 0 2 2h2M21 7V5a2 2 0 0 0-2-2h-2M21 17v2a2 2 0 0 1-2 2h-2M7 12h10"/></svg>
+              Escanear código de barras
+            </button>
+            <div class="field">
+              <label for="prod-nombre">Nombre <span class="field-req">*</span></label>
+              <input id="prod-nombre" placeholder="Nombre *" required>
+            </div>
+            <div class="field">
+              <label for="prod-descripcion">Descripción</label>
+              <input id="prod-descripcion" placeholder="Descripción">
+            </div>
+            <div class="field">
+              <label for="prod-categoria">Categoría</label>
+              <input id="prod-categoria" placeholder="Categoría">
+            </div>
+            <div class="field">
+              <label for="prod-precio">Precio de venta <span class="field-req">*</span></label>
+              <input id="prod-precio" type="number" step="0.01" placeholder="Precio de venta *" required>
+            </div>
+            <div class="field">
+              <label for="prod-costo">Costo</label>
+              <input id="prod-costo" type="number" step="0.01" placeholder="Costo">
+            </div>
+            <div class="field">
+              <label for="prod-stock">Stock inicial</label>
+              <input id="prod-stock" type="number" step="1" placeholder="Stock inicial">
+            </div>
+            <div class="field">
+              <label for="prod-stock-min">Stock mínimo</label>
+              <input id="prod-stock-min" type="number" step="1" placeholder="Stock mínimo">
+            </div>
+            <input id="prod-stock-max" type="text" placeholder="Stock máximo (automático)" disabled style="display:none">
+            <div class="field">
+              <label for="prod-proveedor">Proveedor</label>
+              <select id="prod-proveedor">
+                <option value="">Sin proveedor asignado</option>
+              </select>
+            </div>
+            <div id="reader-alta" style="width:100%; max-width:400px;"></div>
+            <div class="modal-acciones" style="margin-top:12px">
+              <button type="button" id="btn-cancelar-edicion" class="btn-secondary" style="display:none">Cancelar edición</button>
+              <button type="submit" class="btn-primary" id="btn-guardar-producto">Guardar producto</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- ===================== TAB CATALOGO ===================== -->
+      <section id="tab-catalogo" class="tab-content">
+        <div class="panel">
+          <div class="titulo-con-filtro">
+            <h2>Catálogo de productos</h2>
+            <label class="filtro-registros">Mostrar
+              <select id="limite-productos" class="select-limite">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="todos">Todos</option>
+              </select>
+            </label>
+          </div>
+          <div class="field">
+            <label for="buscar-producto">Buscar producto</label>
+            <input id="buscar-producto" placeholder="Buscar por nombre o código">
+          </div>
+          <label class="checkbox-inline">
+            <input type="checkbox" id="ver-inactivos"> Ver también dados de baja
+          </label>
+          <div class="field">
+            <label for="filtro-proveedor-producto">Filtrar por proveedor</label>
+            <select id="filtro-proveedor-producto">
+              <option value="">Todos los proveedores</option>
+            </select>
+          </div>
+          <div class="acciones-excel" data-permiso="productos.importar">
+            <button id="btn-exportar-productos" type="button" class="btn-secondary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></svg> Exportar a Excel</button>
+            <button id="btn-plantilla-productos" type="button" class="btn-secondary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Descargar plantilla</button>
+            <button id="btn-importar-productos" type="button" class="btn-secondary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Importar desde Excel</button>
+            <input type="file" id="input-importar-productos" accept=".xlsx,.xlsm" style="display:none">
+          </div>
+          <div class="tabla-wrap">
+<table id="tabla-productos">
+            <thead>
+              <tr><th>Código</th><th>Nombre</th><th>Proveedor</th><th>Precio</th><th>Stock</th><th>Estado</th><th>Acciones</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+</div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB PROVEEDORES (solo alta) ===================== -->
+      <section id="tab-proveedores" class="tab-content">
+        <div class="panel">
+          <h2 id="titulo-form-proveedor">Alta de proveedor</h2>
+          <p class="aviso-vacio-rapida">Da de alta un nuevo proveedor. Para ver, editar o pedir sugerencia de pedido, ve a <b>Lista de proveedores</b>.</p>
+          <form id="form-proveedor">
+            <input type="hidden" id="prov-id">
+            <div class="field">
+              <label for="prov-nombre">Nombre del proveedor <span class="field-req">*</span></label>
+              <input id="prov-nombre" placeholder="Nombre del proveedor (ej. Coca-Cola FEMSA) *" required>
+            </div>
+            <div class="field">
+              <label for="prov-contacto">Nombre de contacto</label>
+              <input id="prov-contacto" placeholder="Nombre de contacto">
+            </div>
+            <div class="field">
+              <label for="prov-telefono">Teléfono</label>
+              <input id="prov-telefono" placeholder="Teléfono">
+            </div>
+            <div class="field">
+              <label for="prov-dia-visita">Día de visita</label>
+              <select id="prov-dia-visita">
+                <option value="">Sin día fijo de visita</option>
+                <option value="0">Pasa los lunes</option>
+                <option value="1">Pasa los martes</option>
+                <option value="2">Pasa los miércoles</option>
+                <option value="3">Pasa los jueves</option>
+                <option value="4">Pasa los viernes</option>
+                <option value="5">Pasa los sábados</option>
+                <option value="6">Pasa los domingos</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="prov-frecuencia">Frecuencia de visita</label>
+              <select id="prov-frecuencia">
+                <option value="7">Pasa cada semana (7 días)</option>
+                <option value="14">Pasa cada 2 semanas (14 días)</option>
+                <option value="15">Pasa cada 15 días</option>
+                <option value="30">Pasa cada mes (30 días)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="prov-notas">Notas</label>
+              <input id="prov-notas" placeholder="Notas (opcional)">
+            </div>
+            <div class="modal-acciones" style="margin-top:12px">
+              <button type="button" id="btn-cancelar-edicion-proveedor" class="btn-secondary" style="display:none">Cancelar edición</button>
+              <button type="submit" class="btn-primary" id="btn-guardar-proveedor">Guardar proveedor</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- ===================== TAB LISTA DE PROVEEDORES ===================== -->
+      <section id="tab-lista-proveedores" class="tab-content">
+        <div class="panel">
+          <div class="titulo-con-filtro">
+            <h2>Proveedores</h2>
+            <label class="filtro-registros">Mostrar
+              <select id="limite-proveedores" class="select-limite">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="todos">Todos</option>
+              </select>
+            </label>
+          </div>
+          <label class="checkbox-inline">
+            <input type="checkbox" id="ver-inactivos-proveedores"> Ver también dados de baja
+          </label>
+          <div class="tabla-wrap">
+<table id="tabla-proveedores">
+            <thead>
+              <tr><th>Proveedor</th><th>Contacto</th><th>Visita</th><th>Estado</th><th>Acciones</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+</div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB INVENTARIO ===================== -->
+      <section id="tab-inventario" class="tab-content">
+        <div class="panel">
+          <h2>Movimiento de inventario</h2>
+          <form id="form-inventario">
+            <!-- Buscador global: por nombre o código (mismo criterio que en Vender) -->
+            <div class="combo-buscador field" id="inv-combo-sin-codigo">
+              <label for="inv-buscar-sin-codigo">Buscar producto</label>
+              <input
+                type="text"
+                id="inv-buscar-sin-codigo"
+                placeholder="Nombre o código (ej. coca, huevo, 750123…)"
+                autocomplete="off"
+              >
+              <button type="button" id="inv-limpiar-sin-codigo" class="combo-limpiar" style="display:none" title="Quitar selección">✕</button>
+              <div id="inv-lista-sin-codigo" class="combo-lista" style="display:none"></div>
+            </div>
+
+            <div class="separador-o"><span>o</span></div>
+
+            <button type="button" id="btn-scan-inv" class="btn-primary btn-grande">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M3 17v2a2 2 0 0 0 2 2h2M21 7V5a2 2 0 0 0-2-2h-2M21 17v2a2 2 0 0 1-2 2h-2M7 12h10"/></svg>
+              Escanear código de barras
+            </button>
+            <!-- Código interno del producto seleccionado (lo llena el buscador o el escáner) -->
+            <input id="inv-codigo" type="text" required style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" tabindex="-1" aria-hidden="true">
+
+            <div id="inv-producto-info" class="info-producto-box" style="display:none">
+              <div class="field">
+                <label for="inv-info-nombre">Nombre del producto</label>
+                <input id="inv-info-nombre" disabled placeholder="Nombre del producto">
+              </div>
+              <div class="info-producto-fila">
+                <div class="field">
+                  <label for="inv-info-categoria">Categoría</label>
+                  <input id="inv-info-categoria" disabled placeholder="Categoría">
+                </div>
+                <div class="field">
+                  <label for="inv-info-stock-actual">Stock actual</label>
+                  <input id="inv-info-stock-actual" disabled placeholder="Stock actual">
+                </div>
+              </div>
+            </div>
+
+
+            <div class="field">
+              <label for="inv-tipo">Tipo de movimiento</label>
+              <select id="inv-tipo">
+                <option value="entrada">Entrada (compra/reposición)</option>
+                <option value="salida">Salida (merma/pérdida)</option>
+                <option value="ajuste">Ajuste (fijar stock exacto)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="inv-cantidad">Cantidad <span class="field-req">*</span></label>
+              <input id="inv-cantidad" type="number" placeholder="Cantidad *" required>
+            </div>
+            <div class="field">
+              <label for="inv-costo-unitario">Costo pagado por unidad</label>
+              <input id="inv-costo-unitario" type="number" step="0.01" min="0" placeholder="Costo pagado por unidad">
+            </div>
+            <div class="field">
+              <label for="inv-motivo">Motivo</label>
+              <input id="inv-motivo" placeholder="Motivo (opcional)">
+            </div>
+            <div id="reader-inv" style="width:100%; max-width:400px;"></div>
+            <button type="submit" class="btn-primary">Registrar movimiento</button>
+          </form>
+        </div>
+
+      </section>
+
+      <!-- ===================== TAB MOVIMIENTOS ===================== -->
+      <section id="tab-movimientos" class="tab-content">
+        <div class="panel">
+          <div class="titulo-con-filtro">
+            <h2>Historial de movimientos recientes</h2>
+            <label class="filtro-registros">Mostrar
+              <select id="limite-movimientos" class="select-limite">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="todos">Todos</option>
+              </select>
+            </label>
+          </div>
+          <div class="filtros-fecha">
+            <label>Desde: <input type="date" id="mov-fecha-inicio"></label>
+            <label>Hasta: <input type="date" id="mov-fecha-fin"></label>
+            <button type="button" id="btn-filtrar-movimientos" class="btn-secondary">Filtrar</button>
+          </div>
+          <div class="tabla-wrap">
+<table id="tabla-movimientos">
+            <thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Costo pagado</th><th>Motivo</th></tr></thead>
+            <tbody></tbody>
+          </table>
+</div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB ALERTAS DE STOCK ===================== -->
+      <section id="tab-alertas-stock" class="tab-content">
+        <div class="panel">
+          <div class="titulo-con-filtro">
+            <h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Productos con bajo stock</h2>
+            <label class="filtro-registros">Mostrar
+              <select id="limite-bajo-stock" class="select-limite">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="todos">Todos</option>
+              </select>
+            </label>
+          </div>
+          <div class="tabla-wrap">
+<table id="tabla-bajo-stock">
+            <thead><tr><th>Producto</th><th>Stock actual</th><th>Stock mínimo</th></tr></thead>
+            <tbody></tbody>
+          </table>
+</div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB OTROS GASTOS ===================== -->
+      <section id="tab-gastos" class="tab-content">
+        <div class="panel">
+          <h2>Registrar gasto</h2>
+          <form id="form-gasto">
+            <div class="field">
+              <label for="gasto-concepto">Concepto <span class="field-req">*</span></label>
+              <input id="gasto-concepto" placeholder="Concepto (ej. Renta local, Sueldo Juan) *" required>
+            </div>
+            <div class="field">
+              <label for="gasto-categoria">Categoría</label>
+              <select id="gasto-categoria">
+                <option value="renta">Renta</option>
+                <option value="luz">Luz</option>
+                <option value="agua">Agua</option>
+                <option value="internet">Internet / teléfono</option>
+                <option value="sueldo">Sueldo / nómina</option>
+                <option value="mantenimiento">Mantenimiento</option>
+                <option value="otro" selected>Otro</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="gasto-monto">Monto <span class="field-req">*</span></label>
+              <input id="gasto-monto" type="number" step="0.01" min="0.01" placeholder="Monto *" required>
+            </div>
+            <div class="field">
+              <label for="gasto-fecha">Fecha del gasto</label>
+              <input id="gasto-fecha" type="date" placeholder="Fecha del gasto">
+            </div>
+            <div class="field">
+              <label for="gasto-notas">Notas</label>
+              <input id="gasto-notas" placeholder="Notas (opcional)">
+            </div>
+            <button type="submit" class="btn-primary">Registrar gasto</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ===================== TAB VER GASTOS ===================== -->
+      <section id="tab-ver-gastos" class="tab-content">
+        <div class="panel">
+          <div class="titulo-con-filtro">
+            <h2>Gastos registrados</h2>
+            <label class="filtro-registros">Mostrar
+              <select id="limite-otros-gastos" class="select-limite">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="todos">Todos</option>
+              </select>
+            </label>
+          </div>
+          <div class="filtros-fecha">
+            <label>Desde: <input type="date" id="gasto-fecha-inicio"></label>
+            <label>Hasta: <input type="date" id="gasto-fecha-fin"></label>
+            <button id="btn-filtrar-gastos" class="btn-secondary">Filtrar</button>
+          </div>
+          <div class="resumen-cards">
+            <div class="card"><span id="gastos-total">$0</span><label>Total del periodo</label></div>
+          </div>
+          <div class="tabla-wrap">
+<table id="tabla-otros-gastos">
+            <thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Monto</th><th>Registrado por</th><th>Notas</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+</div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB CORTE DE CAJA ===================== -->
+      <section id="tab-corte-caja" class="tab-content">
+        <div class="panel" data-permiso="caja.cortar">
+          <h2>Corte de caja</h2>
+          <p class="aviso-vacio-rapida">Al cerrar el día, cuenta el efectivo de la caja y compáralo con lo que el sistema registró en ventas de efectivo.</p>
+          <div class="filtros-fecha">
+            <label>Día a cerrar: <input type="date" id="corte-fecha"></label>
+            <button type="button" id="btn-cargar-precorte" class="btn-secondary">Calcular totales</button>
+          </div>
+          <div class="resumen-cards" id="precorte-cards">
+            <div class="card"><span id="pc-ventas">0</span><label>Ventas del día</label></div>
+            <div class="card"><span id="pc-total">$0</span><label>Total vendido</label></div>
+            <div class="card card-destacada"><span id="pc-efectivo">$0</span><label>Efectivo esperado</label></div>
+            <div class="card"><span id="pc-tarjeta">$0</span><label>Tarjeta</label></div>
+            <div class="card"><span id="pc-transferencia">$0</span><label>Transferencia</label></div>
+          </div>
+          <p id="pc-aviso-corte" class="aviso-vacio-rapida" style="display:none"></p>
+          <form id="form-corte-caja">
+            <div class="field">
+              <label for="corte-efectivo-contado">Efectivo contado en caja <span class="field-req">*</span></label>
+              <input id="corte-efectivo-contado" type="number" step="0.01" min="0" placeholder="Suma de billetes y monedas" required>
+            </div>
+            <div class="field">
+              <label for="corte-notas">Notas</label>
+              <input id="corte-notas" placeholder="Ej. faltó una moneda, sobró por cambio no dado...">
+            </div>
+            <p id="pc-diferencia-preview" class="aviso-vacio-rapida" style="margin-bottom:12px"></p>
+            <button type="submit" class="btn-primary" id="btn-guardar-corte">Guardar corte de caja</button>
+          </form>
+        </div>
+
+        <div class="panel" data-permiso-any="caja.ver,caja.cortar">
+          <div class="titulo-con-filtro">
+            <h2>Historial de cortes</h2>
+            <label class="filtro-registros">Mostrar
+              <select id="limite-cortes" class="select-limite">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="todos">Todos</option>
+              </select>
+            </label>
+          </div>
+          <div class="tabla-wrap">
+            <table id="tabla-cortes">
+              <thead>
+                <tr>
+                  <th>Día</th>
+                  <th>Ventas</th>
+                  <th>Total</th>
+                  <th>Efectivo sist.</th>
+                  <th>Efectivo contado</th>
+                  <th>Diferencia</th>
+                  <th>Quién</th>
+                  <th>Notas</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB REPORTES ===================== -->
+      <section id="tab-reportes" class="tab-content">
+        <div class="panel">
+          <h2>Reporte de ventas</h2>
+          <div class="filtros-fecha">
+            <label>Desde: <input type="date" id="rep-fecha-inicio"></label>
+            <label>Hasta: <input type="date" id="rep-fecha-fin"></label>
+            <button id="btn-filtrar-reporte" class="btn-secondary">Filtrar</button>
+            <button id="btn-exportar-excel" type="button" class="btn-secondary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></svg> Exportar Excel</button>
+            <button id="btn-exportar-pdf" type="button" class="btn-secondary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M10 13h4"/><path d="M10 17h4"/><path d="M10 9h1"/></svg> Exportar PDF</button>
+          </div>
+
+          <div class="resumen-cards">
+            <div class="card"><span id="rep-num-ventas">0</span><label>Ventas</label></div>
+            <div class="card"><span id="rep-ingresos">$0</span><label>Ingresos</label></div>
+            <div class="card"><span id="rep-ticket">$0</span><label>Ticket promedio</label></div>
+            <div class="card"><span id="rep-gastos">$0</span><label>Gastado en compras</label></div>
+            <div class="card"><span id="rep-mermas">$0</span><label>Perdido en mermas</label></div>
+            <div class="card"><span id="rep-otros-gastos">$0</span><label>Otros gastos</label></div>
+            <div class="card card-destacada"><span id="rep-utilidad">$0</span><label>Utilidad neta</label></div>
+          </div>
+
+          <p class="aviso-vacio-rapida">
+            La <b>utilidad neta</b> resta lo que gastaste comprando mercancía <i>en este periodo</i>,
+            por eso un mes de compras grandes se puede ver como pérdida aunque vendas bien.
+            El <b>margen bruto</b> de abajo, en cambio, mide la ganancia de lo que realmente
+            se vendió (precio de venta − costo del producto), sin importar cuándo se compró.
+          </p>
+          <div class="resumen-cards">
+            <div class="card"><span id="rep-costo-vendido">$0</span><label>Costo de lo vendido</label></div>
+            <div class="card card-destacada"><span id="rep-margen-bruto">$0</span><label>Margen bruto de ventas</label></div>
+          </div>
+
+          <div class="titulo-con-filtro">
+            <h3>Top productos vendidos</h3>
+            <label class="filtro-registros">Mostrar
+              <select id="limite-top-productos" class="select-limite">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="todos">Todos</option>
+              </select>
+            </label>
+          </div>
+          <div class="tabla-wrap">
+<table id="tabla-top-productos">
+            <thead><tr><th>Producto</th><th>Unidades</th><th>Ingresos</th></tr></thead>
+            <tbody></tbody>
+          </table>
+</div>
+
+          <div class="titulo-con-filtro">
+            <h3>Historial de ventas</h3>
+            <label class="filtro-registros">Mostrar
+              <select id="limite-ventas" class="select-limite">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="todos">Todos</option>
+              </select>
+            </label>
+          </div>
+          <div class="tabla-wrap">
+<table id="tabla-ventas">
+            <thead><tr><th>#</th><th>Fecha</th><th>Total</th><th>Pago</th><th>Vendedor</th><th>Estado</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+</div>
+
+          <div class="titulo-con-filtro">
+            <h3>Gastos en compras de mercancía</h3>
+            <label class="filtro-registros">Mostrar
+              <select id="limite-gastos" class="select-limite">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="todos">Todos</option>
+              </select>
+            </label>
+          </div>
+          <p class="aviso-vacio-rapida">Solo se cuentan las entradas de inventario donde capturaste el costo pagado.</p>
+          <div class="tabla-wrap">
+<table id="tabla-gastos">
+            <thead><tr><th>Fecha</th><th>Producto</th><th>Cantidad</th><th>Costo unitario</th><th>Subtotal</th><th>Motivo</th></tr></thead>
+            <tbody></tbody>
+          </table>
+</div>
+
+          <div class="titulo-con-filtro">
+            <h3>Mermas y pérdidas</h3>
+            <label class="filtro-registros">Mostrar
+              <select id="limite-mermas" class="select-limite">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="todos">Todos</option>
+              </select>
+            </label>
+          </div>
+          <p class="aviso-vacio-rapida">Salidas de inventario (merma/pérdida), valorizadas al costo que tenía el producto en ese momento.</p>
+          <div class="tabla-wrap">
+<table id="tabla-mermas">
+            <thead><tr><th>Fecha</th><th>Producto</th><th>Cantidad</th><th>Costo unitario</th><th>Subtotal</th><th>Motivo</th></tr></thead>
+            <tbody></tbody>
+          </table>
+</div>
+
+          <div class="titulo-con-filtro">
+            <h3>Otros gastos (renta, luz, sueldos, etc.)</h3>
+            <label class="filtro-registros">Mostrar
+              <select id="limite-reportes-otros-gastos" class="select-limite">
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="todos">Todos</option>
+              </select>
+            </label>
+          </div>
+          <div class="tabla-wrap">
+<table id="tabla-reportes-otros-gastos">
+            <thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Monto</th><th>Registrado por</th></tr></thead>
+            <tbody></tbody>
+          </table>
+</div>
+        </div>
+      </section>
+
+      <!-- ===================== TAB USUARIOS ===================== -->
+      <!-- ===================== TAB USUARIOS ===================== -->
+
+<section id="tab-configuracion" class="tab-content">
+  <div class="panel">
+    <h2>Configuración del negocio</h2>
+    <p style="color:var(--text-mute); font-size:0.88rem; margin-top:-8px; margin-bottom:18px;">
+      Estos datos se usan en el menú, la pantalla de inicio de sesión y los reportes (PDF / Excel).
+    </p>
+    <form id="form-configuracion">
+      <div class="field">
+        <label for="cfg-nombre-tienda">Nombre de la tienda <span class="field-req">*</span></label>
+        <input id="cfg-nombre-tienda" maxlength="80" required placeholder="Ej. Abarrotes Don José">
+        <p style="color:var(--text-mute); font-size:0.8rem; margin:6px 0 0;">
+          Aparece en el menú lateral, el login y los encabezados de los reportes.
+        </p>
+      </div>
+      <button type="submit" class="btn-primary">Guardar configuración</button>
+    </form>
+  </div>
+</section>
+
+<section id="tab-permisos" class="tab-content">
+  <div class="panel">
+    <h2>Permisos del rol Cajero</h2>
+    <p style="color:var(--text-mute); font-size:0.88rem; margin-top:-8px; margin-bottom:18px;">
+      Define con detalle qué puede hacer el rol <b>Cajero</b> en cada módulo.
+      El rol <b>Administrador</b> siempre tiene acceso total.
+      Usuarios y esta pantalla de Permisos nunca son configurables: solo un administrador puede gestionar cuentas y permisos.
+      Si un módulo no tiene ninguna acción activa, <b>no aparece en el menú</b> del cajero.
+    </p>
+    <form id="form-permisos">
+      <div id="permisos-modulos"></div>
+      <button type="submit" class="btn-primary">Guardar permisos</button>
+    </form>
+  </div>
+</section>
+
+<section id="tab-usuarios" class="tab-content">
+  <div class="panel">
+    <h2>Nuevo usuario</h2>
+    <form id="form-usuario">
+      <div class="field">
+        <label for="user-username">Usuario (para iniciar sesión) <span class="field-req">*</span></label>
+        <input id="user-username" placeholder="Usuario (para iniciar sesión) *" required autocomplete="off">
+        <div id="username-feedback" style="margin-top: 4px; font-size: 0.8rem; min-height: 1.1em;"></div>
+      </div>
+      <div class="field">
+        <label for="user-nombre">Nombre completo</label>
+        <input id="user-nombre" placeholder="Nombre completo">
+      </div>
+      <div class="field">
+        <label for="user-password">Contraseña <span class="field-req">*</span></label>
+        <div class="password-field">
+          <input id="user-password" type="password" placeholder="Contraseña *" required>
+          <button type="button" class="toggle-password" data-toggle-password="user-password" aria-label="Mostrar contraseña"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+        <div id="password-strength" class="strength-meter">
+          <div class="strength-meter-header">
+            <span class="strength-meter-label">Fuerza de la contraseña</span>
+            <span id="strength-text" class="strength-meter-value">—</span>
+          </div>
+          <div class="strength-meter-track">
+            <span class="strength-meter-segment" data-segment="1"></span>
+            <span class="strength-meter-segment" data-segment="2"></span>
+            <span class="strength-meter-segment" data-segment="3"></span>
+            <span class="strength-meter-segment" data-segment="4"></span>
+          </div>
+        </div>
+        <div id="password-requirements" class="password-requirements">
+          <div id="req-length" class="password-requirement">
+            <span id="req-length-icon" class="req-icon">○</span>
+            <span>Mínimo 8 caracteres</span>
+          </div>
+          <div id="req-uppercase" class="password-requirement">
+            <span id="req-uppercase-icon" class="req-icon">○</span>
+            <span>Al menos 1 mayúscula</span>
+          </div>
+          <div id="req-lowercase" class="password-requirement">
+            <span id="req-lowercase-icon" class="req-icon">○</span>
+            <span>Al menos 1 minúscula</span>
+          </div>
+          <div id="req-number" class="password-requirement">
+            <span id="req-number-icon" class="req-icon">○</span>
+            <span>Al menos 1 número</span>
+          </div>
+          <div id="req-special" class="password-requirement">
+            <span id="req-special-icon" class="req-icon">○</span>
+            <span>Al menos 1 carácter especial (!@#$%^&*)</span>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label for="user-rol">Rol</label>
+        <select id="user-rol">
+          <option value="cajero">Cajero</option>
+          <option value="admin">Administrador</option>
+        </select>
+      </div>
+      <button type="submit" class="btn-primary">Crear usuario</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Usuarios del sistema</h2>
+    <div class="tabla-wrap">
+<table id="tabla-usuarios">
+      <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+</div>
+  </div>
+</section>
+
+    </main>
+  </div>
+</div> <!-- fin #app -->
+
+<div id="toast"></div>
+
+<!-- ===================== MODAL CANTIDAD (venta rápida / granel) ===================== -->
+<div id="modal-cantidad-rapida" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h2 id="mcr-nombre">Producto</h2>
+    <p id="mcr-precio-label"></p>
+    <div id="mcr-toggle-unidad" class="mcr-toggle-unidad" style="display:none">
+      <button type="button" id="mcr-btn-gramos" class="mcr-unidad-btn">Gramos</button>
+      <button type="button" id="mcr-btn-kilos" class="mcr-unidad-btn">Kilos</button>
+    </div>
+    <div id="mcr-presets" class="mcr-presets"></div>
+    <div class="mcr-input-fila">
+      <button type="button" id="mcr-menos" class="btn-secondary">−</button>
+      <input id="mcr-cantidad" type="number" step="0.001" min="0.001">
+      <span id="mcr-sufijo-unidad" class="mcr-sufijo-unidad"></span>
+      <button type="button" id="mcr-mas" class="btn-secondary">+</button>
+    </div>
+    <div class="modal-total">Subtotal: $<span id="mcr-subtotal">0.00</span></div>
+    <div class="modal-acciones">
+      <button type="button" id="mcr-cancelar" class="btn-secondary">Cancelar</button>
+      <button type="button" id="mcr-agregar" class="btn-primary">Agregar al carrito</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODAL CONFIRMAR VENTA ===================== -->
+<div id="modal-confirmar-venta" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h2>Confirmar venta</h2>
+    <p id="modal-venta-resumen"></p>
+    <div class="modal-total">Total: $<span id="modal-venta-total">0.00</span></div>
+
+    <div id="cobro-rapido" class="cobro-rapido" style="display:none">
+      <label>Cobro rápido (efectivo)</label>
+      <div id="billetes-sugeridos" class="billetes-sugeridos"></div>
+      <label for="input-recibido" class="cobro-manual-label">Otra cantidad recibida</label>
+      <div class="cobro-manual">
+        <span>$</span>
+        <input type="number" id="input-recibido" placeholder="Otra cantidad recibida" step="0.01" min="0" inputmode="decimal">
+      </div>
+      <div id="cobro-resultado" class="cobro-resultado"></div>
+    </div>
+
+    <div class="modal-acciones">
+      <button type="button" id="btn-cancelar-venta-modal" class="btn-secondary">Cancelar</button>
+      <button type="button" id="btn-confirmar-venta-modal" class="btn-primary">Confirmar y cobrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODAL SUGERENCIA DE PEDIDO ===================== -->
+<div id="modal-sugerencia-pedido" class="modal-overlay" style="display:none">
+  <div class="modal-box modal-box-ancho">
+    <button type="button" class="modal-cerrar-x" id="btn-cerrar-sugerencia" aria-label="Cerrar">✕</button>
+    <h2 id="sugerencia-titulo">Sugerencia de pedido</h2>
+    <p class="aviso-codigo-interno" id="sugerencia-info"></p>
+    <div class="acciones-excel">
+      <button id="btn-exportar-sugerencia" type="button" class="btn-secondary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></svg> Exportar a Excel</button>
+    </div>
+    <div class="tabla-wrap">
+<table id="tabla-sugerencia-pedido">
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Stock actual</th>
+          <th>Stock mínimo</th>
+          <th>Stock máximo</th>
+          <th>Sugerido</th>
+          <th>Cantidad a pedir</th>
+          <th>Costo c/u</th>
+          <th>Subtotal</th>
+          <th>Motivo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+</div>
+    <p id="sugerencia-vacio" class="aviso-vacio-rapida" style="display:none">
+      No hay productos de este proveedor que necesiten pedido por ahora.
+    </p>
+    <div id="sugerencia-resumen" class="resumen-pedido" style="display:none">
+      <div class="resumen-pedido-linea">
+        <span><span id="resumen-pedido-productos">0</span> producto(s) seleccionados</span>
+        <span class="resumen-pedido-total">Gasto total estimado: $<span id="resumen-pedido-total">0.00</span></span>
+      </div>
+      <button id="btn-hacer-pedido" type="button" class="btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Hacer pedido</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Menú lateral en móvil: abrir/cerrar (independiente de app.js).
+(function () {
+  var sidebar = document.getElementById('sidebar');
+  var overlay = document.getElementById('sidebar-overlay');
+  var btnAbrir = document.getElementById('btn-abrir-menu');
+  var btnCerrar = document.getElementById('btn-cerrar-menu');
+
+  function abrirMenu() {
+    sidebar.classList.add('open');
+    overlay.classList.add('show');
+  }
+  function cerrarMenu() {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('show');
+  }
+  if (btnAbrir) btnAbrir.addEventListener('click', abrirMenu);
+  if (btnCerrar) btnCerrar.addEventListener('click', cerrarMenu);
+  if (overlay) overlay.addEventListener('click', cerrarMenu);
+
+  // Al elegir una sección en móvil, el menú se cierra solo.
+  document.querySelectorAll('.tab-btn').forEach(function (btn) {
+    btn.addEventListener('click', cerrarMenu);
+  });
+})();
+
+// Ocultar/mostrar el menú lateral en pantallas grandes (se recuerda la preferencia).
+(function () {
+  var app = document.getElementById('app');
+  var btnColapsar = document.getElementById('btn-colapsar-sidebar');
+  var btnMostrar = document.getElementById('btn-mostrar-sidebar');
+  var CLAVE = 'pos-sidebar-colapsado';
+
+  function aplicarEstado(colapsado) {
+    app.classList.toggle('sidebar-colapsado', colapsado);
+  }
+
+  // Restaurar la preferencia guardada de una sesión anterior.
+  aplicarEstado(localStorage.getItem(CLAVE) === '1');
+
+  function alternar() {
+    var colapsado = !app.classList.contains('sidebar-colapsado');
+    aplicarEstado(colapsado);
+    localStorage.setItem(CLAVE, colapsado ? '1' : '0');
+  }
+
+  if (btnColapsar) btnColapsar.addEventListener('click', alternar);
+  if (btnMostrar) btnMostrar.addEventListener('click', alternar);
+})();
+</script>
+<script src="/static/app.js?v=3"></script>
+
+<div id="modal-confirmar" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="modal-confirmar-titulo">
+  <div class="modal-box modal-confirm">
+    <div class="modal-confirm-icon" id="modal-confirmar-icono" aria-hidden="true">?</div>
+    <h2 id="modal-confirmar-titulo">Confirmar</h2>
+    <p id="modal-confirmar-mensaje"></p>
+    <div class="modal-acciones">
+      <button type="button" id="modal-confirmar-cancelar" class="btn-secondary">Cancelar</button>
+      <button type="button" id="modal-confirmar-aceptar" class="btn-primary">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
