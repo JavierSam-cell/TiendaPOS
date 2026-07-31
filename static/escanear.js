@@ -109,6 +109,7 @@ function mostrarPantallaScan() {
   document.getElementById("esc-pantalla-scan").style.display = "block";
   document.getElementById("esc-nombre-usuario").textContent =
     sesion.usuario.nombre_completo || sesion.usuario.username;
+  cargarCatalogoEsc();
 }
 
 document.getElementById("esc-form-login").addEventListener("submit", async (e) => {
@@ -407,6 +408,7 @@ document.getElementById("esc-form-alta-rapida").addEventListener("submit", async
     await api("/productos", { method: "POST", body: JSON.stringify(payload) });
     toast("Producto dado de alta");
     ocultarNoEncontrado();
+    cargarCatalogoEsc();
     // Se vuelve a mandar el código: ahora sí existe, así que si en la
     // compu están parados en Vender lo agrega solo al carrito.
     enviarCodigoEscaneado(codigo);
@@ -415,18 +417,141 @@ document.getElementById("esc-form-alta-rapida").addEventListener("submit", async
   }
 });
 
-document.getElementById("esc-manual-btn").addEventListener("click", () => {
-  const input = document.getElementById("esc-manual-input");
-  const codigo = input.value.trim();
-  if (!codigo) return;
-  enviarCodigoEscaneado(codigo);
-  input.value = "";
-  input.focus();
+// ---------------------------------------------------------
+// Buscador por nombre o código (para cuando la cámara no lee el
+// código): mismo criterio que el buscador de la pantalla Vender.
+// Se trae el catálogo una vez (al entrar a la pantalla de escaneo)
+// y se filtra localmente mientras el cajero escribe.
+// ---------------------------------------------------------
+function normalizarTexto(texto) {
+  return (texto || "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+const LIMITE_BUSQUEDA_ESC = 12;
+let _catalogoEsc = [];
+
+async function cargarCatalogoEsc() {
+  try {
+    _catalogoEsc = await api("/productos?activos=true");
+  } catch (e) {
+    _catalogoEsc = [];
+  }
+}
+
+function _resultadosBusquedaEsc(texto) {
+  const termino = normalizarTexto((texto || "").trim());
+  if (!termino) return [];
+  return _catalogoEsc.filter((p) =>
+    normalizarTexto(p.nombre).includes(termino) ||
+    normalizarTexto(p.codigo_barras || "").includes(termino)
+  );
+}
+
+function _pareceCodigoBarrasEsc(texto) {
+  const t = (texto || "").trim();
+  if (t.length < 4) return false;
+  if (/\s/.test(t)) return false;
+  return /^[0-9]{6,}$/.test(t) || /^INT-[0-9A-F]+$/i.test(t);
+}
+
+function renderResultadosBusquedaEsc(productos) {
+  const cont = document.getElementById("esc-buscar-resultados");
+  const vacio = document.getElementById("esc-buscar-vacio");
+  cont.innerHTML = "";
+
+  if (productos.length === 0) {
+    vacio.style.display = "block";
+    return;
+  }
+  vacio.style.display = "none";
+
+  productos.forEach((p) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "esc-resultado-item";
+    const precioTexto = p.unidad_venta === "kg" ? `$${p.precio_venta.toFixed(2)}/kg` : `$${p.precio_venta.toFixed(2)}`;
+    btn.innerHTML = `
+      <span>
+        <span class="esc-resultado-nombre">${p.nombre}</span><br>
+        <span class="esc-resultado-codigo">${p.requiere_codigo === false ? "sin código" : p.codigo_barras}</span>
+      </span>
+      <span class="esc-resultado-precio">${precioTexto}</span>
+    `;
+    btn.addEventListener("click", () => {
+      enviarCodigoEscaneado(p.codigo_barras);
+      document.getElementById("esc-buscar-input").value = "";
+      renderResultadosBusquedaEsc([]);
+      document.getElementById("esc-buscar-vacio").style.display = "none";
+    });
+    cont.appendChild(btn);
+  });
+}
+
+function filtrarBusquedaEsc(texto) {
+  const crudo = (texto || "").trim();
+  if (!crudo) {
+    document.getElementById("esc-buscar-resultados").innerHTML = "";
+    document.getElementById("esc-buscar-vacio").style.display = "none";
+    return;
+  }
+  const filtrados = _resultadosBusquedaEsc(crudo).slice(0, LIMITE_BUSQUEDA_ESC);
+  renderResultadosBusquedaEsc(filtrados);
+}
+
+async function resolverBusquedaEscConEnter() {
+  const input = document.getElementById("esc-buscar-input");
+  const crudo = (input.value || "").trim();
+  if (!crudo) return;
+
+  // 1) Coincidencia exacta de código de barras
+  const porCodigo = _catalogoEsc.find(
+    (p) => (p.codigo_barras || "").toLowerCase() === crudo.toLowerCase()
+  );
+  if (porCodigo) {
+    input.value = "";
+    filtrarBusquedaEsc("");
+    enviarCodigoEscaneado(porCodigo.codigo_barras);
+    return;
+  }
+
+  // 2) Parece código de barras aunque no esté en el catálogo: se manda
+  // igual, tal cual se haría si el lector lo hubiera leído (dispara el
+  // flujo de "no encontrado" si de verdad no existe).
+  if (_pareceCodigoBarrasEsc(crudo)) {
+    input.value = "";
+    filtrarBusquedaEsc("");
+    enviarCodigoEscaneado(crudo);
+    return;
+  }
+
+  // 3) Un solo resultado por nombre → se manda directo
+  const resultados = _resultadosBusquedaEsc(crudo);
+  if (resultados.length === 1) {
+    input.value = "";
+    filtrarBusquedaEsc("");
+    enviarCodigoEscaneado(resultados[0].codigo_barras);
+    return;
+  }
+
+  // 4) Varios o ninguno: se deja la lista filtrada visible
+  if (resultados.length === 0) {
+    toast("No se encontró ese producto", true);
+  } else {
+    toast(`Hay ${resultados.length} resultados: toca uno de la lista`);
+  }
+}
+
+document.getElementById("esc-buscar-input").addEventListener("input", (e) => {
+  filtrarBusquedaEsc(e.target.value);
 });
-document.getElementById("esc-manual-input").addEventListener("keydown", (e) => {
+document.getElementById("esc-buscar-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     e.preventDefault();
-    document.getElementById("esc-manual-btn").click();
+    resolverBusquedaEscConEnter();
   }
 });
 

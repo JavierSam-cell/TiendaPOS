@@ -219,6 +219,61 @@
   }
   .esc-no-encontrado .esc-btn { margin-top: 6px; }
 
+  .esc-buscar {
+    margin-top: 18px;
+    border-top: 1px dashed var(--line);
+    padding-top: 14px;
+  }
+  .esc-buscar label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-mute);
+    margin-bottom: 6px;
+  }
+  .esc-buscar input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line);
+    font-size: 1rem;
+    font-family: var(--font-ui);
+  }
+  .esc-buscar-resultados {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 46vh;
+    overflow-y: auto;
+  }
+  .esc-resultado-item {
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line);
+    background: var(--paper);
+    font-family: var(--font-ui);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  .esc-resultado-item:active { background: var(--accent-soft); }
+  .esc-resultado-nombre { font-weight: 700; font-size: 0.92rem; }
+  .esc-resultado-codigo { font-size: 0.78rem; color: var(--text-mute); }
+  .esc-resultado-precio { font-weight: 800; color: var(--accent-darker); white-space: nowrap; }
+  .esc-buscar-vacio {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: var(--text-mute);
+    text-align: center;
+  }
+
   #toast-esc {
     position: fixed;
     left: 50%;
@@ -280,14 +335,11 @@
       <small id="esc-ultimo-codigo"></small>
     </div>
 
-    <div class="esc-manual">
-      <label for="esc-manual-input" style="display:block;font-size:0.82rem;font-weight:700;color:var(--text-mute);margin-bottom:6px;">
-        ¿No lee? Escríbelo a mano
-      </label>
-      <div class="esc-manual-fila">
-        <input id="esc-manual-input" inputmode="numeric" placeholder="Código de barras">
-        <button id="esc-manual-btn" type="button">Enviar</button>
-      </div>
+    <div class="esc-buscar">
+      <label for="esc-buscar-input">¿No lee el código? Busca por nombre o código</label>
+      <input id="esc-buscar-input" placeholder="Ej. coca, huevo, 750123…" autocomplete="off" autocapitalize="none">
+      <div class="esc-buscar-resultados" id="esc-buscar-resultados"></div>
+      <p class="esc-buscar-vacio" id="esc-buscar-vacio" style="display:none">No se encontró ningún producto con ese nombre o código.</p>
     </div>
 
     <!-- Aviso de producto no encontrado + alta rápida (solo admin) -->
@@ -318,6 +370,6 @@
 
 <div id="toast-esc"></div>
 
-<script src="/static/escanear.js?v=2"></script>
+<script src="/static/escanear.js?v=3"></script>
 </body>
 </html>
