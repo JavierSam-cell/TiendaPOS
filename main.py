@@ -66,6 +66,29 @@ def _migrar_esquema():
             # Tabla aún no existe: create_all la creará con la columna nueva.
             pass
 
+        # Corte de caja ampliado: compras, mermas, otros gastos y efectivo esperado.
+        try:
+            columnas_corte = [fila[1] for fila in conn.exec_driver_sql("PRAGMA table_info(cortes_caja)").fetchall()]
+            if columnas_corte:
+                for col, ddl in (
+                    ("total_compras", "ALTER TABLE cortes_caja ADD COLUMN total_compras FLOAT DEFAULT 0"),
+                    ("total_mermas", "ALTER TABLE cortes_caja ADD COLUMN total_mermas FLOAT DEFAULT 0"),
+                    ("total_otros_gastos", "ALTER TABLE cortes_caja ADD COLUMN total_otros_gastos FLOAT DEFAULT 0"),
+                    ("efectivo_esperado", "ALTER TABLE cortes_caja ADD COLUMN efectivo_esperado FLOAT DEFAULT 0"),
+                ):
+                    if col not in columnas_corte:
+                        conn.exec_driver_sql(ddl)
+                        conn.commit()
+                # Cortes viejos: el esperado era solo el efectivo de ventas.
+                if "efectivo_esperado" not in columnas_corte:
+                    conn.exec_driver_sql(
+                        "UPDATE cortes_caja SET efectivo_esperado = COALESCE(total_efectivo, 0) "
+                        "WHERE efectivo_esperado IS NULL OR efectivo_esperado = 0"
+                    )
+                    conn.commit()
+        except Exception:
+            pass
+
 
 _migrar_esquema()
 
@@ -1719,9 +1742,23 @@ def eliminar_otro_gasto(
 # ============================================================
 
 def _totales_ventas_dia(db: Session, dia: date) -> dict:
-    """Suma ventas no canceladas de un día, separadas por método de pago."""
+    """
+    Resumen del día para el corte de caja:
+    - Ventas no canceladas por método de pago
+    - Gastos en compras (entradas de inventario con costo capturado)
+    - Pérdida en mermas (salidas valorizadas; informativo, no restan caja)
+    - Otros gastos (renta, luz, sueldos, etc.)
+    - Efectivo esperado = ventas efectivo - compras - otros gastos
+
+    Las mermas NO restan del efectivo esperado porque son pérdida de
+    inventario, no dinero que salió de la caja. Las compras y los otros
+    gastos sí se restan: se asume que se pagaron en efectivo de la caja
+    (típico en tienda de barrio). Si alguna compra/gasto se pagó por
+    transferencia, el cajero verá un "sobrante" y puede anotarlo en notas.
+    """
     inicio = datetime.combine(dia, datetime.min.time())
     fin = inicio + timedelta(days=1)
+
     ventas = (
         db.query(models.Venta)
         .filter(
@@ -1742,12 +1779,53 @@ def _totales_ventas_dia(db: Session, dia: date) -> dict:
         else:
             total_efectivo += monto
     total_ventas = total_efectivo + total_tarjeta + total_transferencia
+
+    compras = (
+        db.query(models.MovimientoInventario)
+        .filter(
+            models.MovimientoInventario.tipo == "entrada",
+            models.MovimientoInventario.costo_unitario.isnot(None),
+            models.MovimientoInventario.fecha >= inicio,
+            models.MovimientoInventario.fecha < fin,
+        )
+        .all()
+    )
+    total_compras = sum((m.cantidad or 0) * (m.costo_unitario or 0) for m in compras)
+
+    mermas = (
+        db.query(models.MovimientoInventario)
+        .filter(
+            models.MovimientoInventario.tipo == "salida",
+            models.MovimientoInventario.costo_unitario.isnot(None),
+            models.MovimientoInventario.fecha >= inicio,
+            models.MovimientoInventario.fecha < fin,
+        )
+        .all()
+    )
+    total_mermas = sum((m.cantidad or 0) * (m.costo_unitario or 0) for m in mermas)
+
+    otros = (
+        db.query(models.OtroGasto)
+        .filter(
+            models.OtroGasto.fecha >= inicio,
+            models.OtroGasto.fecha < fin,
+        )
+        .all()
+    )
+    total_otros = sum(g.monto or 0 for g in otros)
+
+    efectivo_esperado = total_efectivo - total_compras - total_otros
+
     return {
         "num_ventas": len(ventas),
         "total_ventas": round(total_ventas, 2),
         "total_efectivo": round(total_efectivo, 2),
         "total_tarjeta": round(total_tarjeta, 2),
         "total_transferencia": round(total_transferencia, 2),
+        "total_compras": round(total_compras, 2),
+        "total_mermas": round(total_mermas, 2),
+        "total_otros_gastos": round(total_otros, 2),
+        "efectivo_esperado": round(efectivo_esperado, 2),
     }
 
 
@@ -1758,8 +1836,9 @@ def precorte_caja(
     _usuario: models.Usuario = Depends(auth.requiere_permiso("caja.cortar", "caja.ver")),
 ):
     """
-    Calcula los totales del día según el sistema, para que el cajero
-    sepa cuánto efectivo debería haber antes de contar billetes.
+    Calcula los totales del día (ventas, compras, mermas, otros gastos)
+    y el efectivo esperado en caja, para que el cajero sepa cuánto
+    debería haber antes de contar billetes.
     """
     dia = fecha or date.today()
     totales = _totales_ventas_dia(db, dia)
@@ -1782,7 +1861,7 @@ def crear_corte_caja(
 ):
     dia = datos.fecha_corte or date.today()
     totales = _totales_ventas_dia(db, dia)
-    diferencia = round((datos.efectivo_contado or 0) - totales["total_efectivo"], 2)
+    diferencia = round((datos.efectivo_contado or 0) - totales["efectivo_esperado"], 2)
     nuevo = models.CorteCaja(
         fecha_corte=datetime.combine(dia, datetime.min.time()),
         usuario_id=usuario.id,
@@ -1791,6 +1870,10 @@ def crear_corte_caja(
         total_efectivo=totales["total_efectivo"],
         total_tarjeta=totales["total_tarjeta"],
         total_transferencia=totales["total_transferencia"],
+        total_compras=totales["total_compras"],
+        total_mermas=totales["total_mermas"],
+        total_otros_gastos=totales["total_otros_gastos"],
+        efectivo_esperado=totales["efectivo_esperado"],
         efectivo_contado=datos.efectivo_contado,
         diferencia=diferencia,
         notas=datos.notas or "",

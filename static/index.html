@@ -788,18 +788,27 @@
       <section id="tab-corte-caja" class="tab-content">
         <div class="panel" data-permiso="caja.cortar">
           <h2>Corte de caja</h2>
-          <p class="aviso-vacio-rapida">Al cerrar el día, cuenta el efectivo de la caja y compáralo con lo que el sistema registró en ventas de efectivo.</p>
+          <p class="aviso-vacio-rapida">
+            Al cerrar el día, cuenta el efectivo de la caja y compáralo con el
+            <b>efectivo esperado</b>: ventas en efectivo menos compras y otros gastos del día.
+            Las mermas se muestran como referencia (son pérdida de inventario, no de caja).
+          </p>
           <div class="filtros-fecha">
             <label>Día a cerrar: <input type="date" id="corte-fecha"></label>
             <button type="button" id="btn-cargar-precorte" class="btn-secondary">Calcular totales</button>
           </div>
           <div class="resumen-cards" id="precorte-cards">
-            <div class="card"><span id="pc-ventas">0</span><label>Ventas del día</label></div>
-            <div class="card"><span id="pc-total">$0</span><label>Total vendido</label></div>
-            <div class="card card-destacada"><span id="pc-efectivo">$0</span><label>Efectivo esperado</label></div>
+            <div class="card"><span id="pc-ventas">0</span><label>Ventas realizadas</label></div>
+            <div class="card"><span id="pc-total">$0</span><label>Ingresos por ventas</label></div>
+            <div class="card"><span id="pc-efectivo-ventas">$0</span><label>De las ventas en efectivo</label></div>
             <div class="card"><span id="pc-tarjeta">$0</span><label>Tarjeta</label></div>
             <div class="card"><span id="pc-transferencia">$0</span><label>Transferencia</label></div>
+            <div class="card"><span id="pc-compras">$0</span><label>Gastos en compras</label></div>
+            <div class="card"><span id="pc-mermas">$0</span><label>Pérdida en mermas</label></div>
+            <div class="card"><span id="pc-otros">$0</span><label>Otros gastos</label></div>
+            <div class="card card-destacada"><span id="pc-efectivo">$0</span><label>Efectivo esperado en caja</label></div>
           </div>
+          <p id="pc-formula" class="aviso-vacio-rapida" style="margin-top:-6px"></p>
           <p id="pc-aviso-corte" class="aviso-vacio-rapida" style="display:none"></p>
           <form id="form-corte-caja">
             <div class="field">
@@ -808,7 +817,7 @@
             </div>
             <div class="field">
               <label for="corte-notas">Notas</label>
-              <input id="corte-notas" placeholder="Ej. faltó una moneda, sobró por cambio no dado...">
+              <input id="corte-notas" placeholder="Ej. faltó una moneda, sobró por cambio no dado, compra pagada por transferencia...">
             </div>
             <p id="pc-diferencia-preview" class="aviso-vacio-rapida" style="margin-bottom:12px"></p>
             <button type="submit" class="btn-primary" id="btn-guardar-corte">Guardar corte de caja</button>
@@ -833,8 +842,11 @@
                 <tr>
                   <th>Día</th>
                   <th>Ventas</th>
-                  <th>Total</th>
-                  <th>Efectivo sist.</th>
+                  <th>Ingresos</th>
+                  <th>Compras</th>
+                  <th>Mermas</th>
+                  <th>Otros gastos</th>
+                  <th>Efectivo esperado</th>
                   <th>Efectivo contado</th>
                   <th>Diferencia</th>
                   <th>Quién</th>

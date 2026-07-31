@@ -220,9 +220,9 @@ class NotificacionDescartada(Base):
 
 class CorteCaja(Base):
     """
-    Corte de caja al cerrar el día (o el turno). Guarda lo que el sistema
-    esperaba en efectivo según las ventas del periodo, lo que el cajero
-    contó en billetes/monedas, y la diferencia (faltante o sobrante).
+    Corte de caja al cerrar el día (o el turno). Guarda el resumen del día
+    (ventas, compras, mermas, otros gastos), el efectivo que el sistema
+    esperaba en caja, lo que el cajero contó, y la diferencia.
     """
     __tablename__ = "cortes_caja"
 
@@ -235,9 +235,15 @@ class CorteCaja(Base):
     total_efectivo = Column(Float, default=0.0)
     total_tarjeta = Column(Float, default=0.0)
     total_transferencia = Column(Float, default=0.0)
+    # Gastos del día que afectan (o contextualizan) el corte.
+    total_compras = Column(Float, default=0.0)       # entradas de inventario con costo
+    total_mermas = Column(Float, default=0.0)        # salidas valorizadas (no restan caja)
+    total_otros_gastos = Column(Float, default=0.0)  # renta, luz, sueldos, etc.
+    # Efectivo que debería haber: ventas efectivo - compras - otros gastos.
+    efectivo_esperado = Column(Float, default=0.0)
     # Dinero en billetes/monedas que el cajero contó al cerrar.
     efectivo_contado = Column(Float, nullable=False, default=0.0)
-    # contado - total_efectivo: positivo = sobrante, negativo = faltante.
+    # contado - efectivo_esperado: positivo = sobrante, negativo = faltante.
     diferencia = Column(Float, default=0.0)
     notas = Column(Text, default="")
     fecha_registro = Column(DateTime, default=datetime.now)

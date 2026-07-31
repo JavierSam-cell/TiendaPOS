@@ -444,6 +444,10 @@ class CorteCajaOut(BaseModel):
     total_efectivo: float
     total_tarjeta: float
     total_transferencia: float
+    total_compras: float = 0.0
+    total_mermas: float = 0.0
+    total_otros_gastos: float = 0.0
+    efectivo_esperado: float = 0.0
     efectivo_contado: float
     diferencia: float
     notas: str
@@ -462,4 +466,9 @@ class PrecorteOut(BaseModel):
     total_efectivo: float
     total_tarjeta: float
     total_transferencia: float
+    total_compras: float = 0.0
+    total_mermas: float = 0.0
+    total_otros_gastos: float = 0.0
+    # ventas efectivo - compras - otros gastos (mermas no restan caja)
+    efectivo_esperado: float = 0.0
     ya_hay_corte: bool

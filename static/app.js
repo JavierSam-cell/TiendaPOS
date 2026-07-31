@@ -3539,7 +3539,7 @@ function _renderCortes() {
   if (!tbody) return;
   tbody.innerHTML = "";
   if (!_datosCortes.length) {
-    tbody.innerHTML = `<tr><td colspan="8">Aún no hay cortes registrados</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11">Aún no hay cortes registrados</td></tr>`;
     return;
   }
   _recortarPorLimite(_datosCortes, "limite-cortes").forEach((c) => {
@@ -3550,11 +3550,18 @@ function _renderCortes() {
     if (dif > 0.005) difTxt = "+" + difTxt + " sobrante";
     else if (dif < -0.005) difTxt = difTxt + " faltante";
     else difTxt = "$0.00";
+    // Cortes antiguos pueden no traer efectivo_esperado: se usa total_efectivo.
+    const esperado = c.efectivo_esperado != null
+      ? Number(c.efectivo_esperado)
+      : Number(c.total_efectivo || 0);
     tr.innerHTML = `
       <td>${dia}</td>
       <td>${c.num_ventas}</td>
       <td>$${Number(c.total_ventas || 0).toFixed(2)}</td>
-      <td>$${Number(c.total_efectivo || 0).toFixed(2)}</td>
+      <td>$${Number(c.total_compras || 0).toFixed(2)}</td>
+      <td>$${Number(c.total_mermas || 0).toFixed(2)}</td>
+      <td>$${Number(c.total_otros_gastos || 0).toFixed(2)}</td>
+      <td>$${esperado.toFixed(2)}</td>
       <td>$${Number(c.efectivo_contado || 0).toFixed(2)}</td>
       <td>${difTxt}</td>
       <td>${c.registrado_por || "—"}</td>
