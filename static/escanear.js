@@ -4,6 +4,30 @@ const API = "/api";
 // queda compartida (y viceversa), sin tener que loguearte dos veces.
 let sesion = { token: null, usuario: null };
 
+// Permisos granulares del usuario (igual que en app.js): un cajero puede
+// tener permiso de "productos.agregar" aunque no sea admin, así que el
+// alta rápida desde el escaneo se habilita según este permiso, no según
+// el rol.
+let permisosEfectivos = {};
+
+function tienePermiso(...claves) {
+  if (!sesion.usuario) return false;
+  if (sesion.usuario.rol === "admin") return true;
+  return claves.some((c) => !!permisosEfectivos[c]);
+}
+
+async function cargarPermisos() {
+  if (!sesion.usuario || sesion.usuario.rol === "admin") {
+    permisosEfectivos = {};
+    return;
+  }
+  try {
+    permisosEfectivos = await api("/permisos/mias");
+  } catch (e) {
+    permisosEfectivos = {};
+  }
+}
+
 // ---------------------------------------------------------
 // Toast + bip (igual que en el sistema principal)
 // ---------------------------------------------------------
@@ -54,12 +78,13 @@ async function api(path, options = {}) {
 // ---------------------------------------------------------
 // LOGIN / SESIÓN
 // ---------------------------------------------------------
-function cargarSesionGuardada() {
+async function cargarSesionGuardada() {
   const token = localStorage.getItem("pos_token");
   const usuario = localStorage.getItem("pos_usuario");
   if (token && usuario) {
     sesion.token = token;
     sesion.usuario = JSON.parse(usuario);
+    await cargarPermisos();
     mostrarPantallaScan();
   } else {
     mostrarPantallaLogin();
@@ -104,6 +129,7 @@ document.getElementById("esc-form-login").addEventListener("submit", async (e) =
     sesion.usuario = data.usuario;
     localStorage.setItem("pos_token", data.token);
     localStorage.setItem("pos_usuario", JSON.stringify(data.usuario));
+    await cargarPermisos();
     mostrarPantallaScan();
   } catch (err) {
     errorEl.textContent = err.message || "No se pudo iniciar sesión";
@@ -337,7 +363,7 @@ async function mostrarNoEncontrado(codigo) {
   const form = document.getElementById("esc-form-alta-rapida");
   panel.style.display = "block";
 
-  if (sesion.usuario && sesion.usuario.rol === "admin") {
+  if (tienePermiso("productos.agregar")) {
     texto.textContent = `El código "${codigo}" no está registrado. Buscando en internet...`;
     document.getElementById("esc-rapido-codigo").value = codigo;
     document.getElementById("esc-rapido-nombre").value = "";

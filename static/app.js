@@ -1113,7 +1113,7 @@ async function mostrarAlertaNoEncontrado(codigo) {
   const formRapido = document.getElementById("form-alta-rapida");
   panel.style.display = "block";
 
-  if (sesion.usuario.rol === "admin") {
+  if (tienePermiso("productos.agregar")) {
     texto.textContent = `El código "${codigo}" no está registrado. Buscando en internet...`;
     document.getElementById("rapido-codigo").value = codigo;
     document.getElementById("rapido-nombre").value = "";
