@@ -533,14 +533,47 @@ function iniciarLectorNativo(el, onResultado) {
         mostrarBotonLinterna(el, pista);
       }
 
+      // Evita falsos positivos: exige el mismo código 2 veces seguidas
+      // antes de darlo por bueno (una lectura suelta, por movimiento o
+      // por agarrar de refilón otro código, no se cuela).
+      let ultimoCandidato = null;
+      let vecesSeguidas = 0;
+
       const detectarCuadro = () => {
         if (detenido) return;
         detector
           .detect(video)
           .then((codigos) => {
             if (detenido) return;
-            if (codigos.length > 0) {
-              onResultado(codigos[0].rawValue);
+
+            // Descarta lecturas cuyo dígito verificador (checksum) no
+            // cuadra: un código mal leído casi nunca da un checksum válido.
+            const validos = codigos.filter((c) => checksumEanUpcValido(c.rawValue));
+            if (validos.length === 0) {
+              vecesSeguidas = 0;
+              requestAnimationFrame(detectarCuadro);
+              return;
+            }
+
+            // Si hay varios códigos a la vista (otro producto de refilón,
+            // etiqueta del anaquel, etc.), prioriza el más cercano al
+            // centro de la cámara: normalmente es al que le apuntas.
+            const cx = video.videoWidth / 2;
+            const cy = video.videoHeight / 2;
+            validos.sort(
+              (a, b) => distanciaAlCentro(a, cx, cy) - distanciaAlCentro(b, cx, cy)
+            );
+            const elegido = validos[0];
+
+            if (elegido.rawValue === ultimoCandidato) {
+              vecesSeguidas++;
+            } else {
+              ultimoCandidato = elegido.rawValue;
+              vecesSeguidas = 1;
+            }
+
+            if (vecesSeguidas >= 2) {
+              onResultado(elegido.rawValue);
               return;
             }
             requestAnimationFrame(detectarCuadro);
@@ -555,6 +588,34 @@ function iniciarLectorNativo(el, onResultado) {
       toast("No se pudo acceder a la cámara: " + err, true);
       detenerEscaner(el.id);
     });
+}
+
+// Distancia (al cuadrado, no hace falta la raíz) del centro de un código
+// detectado al centro del cuadro de la cámara. Si el navegador no da
+// boundingBox, se trata como si estuviera en el centro (no penaliza).
+function distanciaAlCentro(codigo, cx, cy) {
+  const caja = codigo.boundingBox;
+  if (!caja) return 0;
+  const codX = caja.x + caja.width / 2;
+  const codY = caja.y + caja.height / 2;
+  return (codX - cx) ** 2 + (codY - cy) ** 2;
+}
+
+// Valida el dígito verificador de códigos EAN-13, EAN-8 y UPC-A (los
+// formatos numéricos típicos de productos). Los demás formatos (QR,
+// Code128, etc.) ya traen su propia verificación interna al decodificar,
+// así que se dejan pasar sin más.
+function checksumEanUpcValido(codigo) {
+  if (!/^\d{8}$|^\d{12}$|^\d{13}$/.test(codigo)) return true;
+  const cuerpo = codigo.slice(0, -1).split("").map(Number);
+  const checkEsperado = Number(codigo.slice(-1));
+  let suma = 0;
+  cuerpo.forEach((d, i) => {
+    const posDesdeDerecha = cuerpo.length - i;
+    suma += d * (posDesdeDerecha % 2 === 1 ? 3 : 1);
+  });
+  const checkCalculado = (10 - (suma % 10)) % 10;
+  return checkCalculado === checkEsperado;
 }
 
 // Botón de linterna dentro del recuadro de la cámara (solo si el equipo
