@@ -210,6 +210,20 @@ async function cargarConfiguracionAdmin() {
 function mostrarLogin() {
   document.getElementById("pantalla-login").style.display = "flex";
   document.getElementById("app").style.display = "none";
+
+  // En móvil el menú lateral deja un overlay con blur FUERA de #app.
+  // Si no se limpia al cerrar sesión, la pantalla de login se ve borrosa
+  // hasta recargar. También cerramos modales/lectores por si quedaron abiertos.
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebar-overlay");
+  if (sidebar) sidebar.classList.remove("open");
+  if (overlay) overlay.classList.remove("show");
+  document.querySelectorAll(".modal-overlay").forEach((el) => {
+    el.style.display = "none";
+  });
+  document.querySelectorAll(".lector-overlay.mostrar").forEach((el) => {
+    el.classList.remove("mostrar");
+  });
 }
 
 async function mostrarApp() {
