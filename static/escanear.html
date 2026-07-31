@@ -19,8 +19,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 20px;
+    justify-content: flex-start;
+    padding: 16px;
     box-sizing: border-box;
   }
   .esc-caja {
@@ -29,13 +29,13 @@
     background: var(--paper);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-ink);
-    padding: 22px;
+    padding: 20px;
     box-sizing: border-box;
   }
   .esc-marca {
     text-align: center;
     color: #fff;
-    margin-bottom: 18px;
+    margin: 8px 0 14px;
     font-weight: 800;
     letter-spacing: 0.02em;
   }
@@ -47,9 +47,9 @@
   }
   .esc-sub {
     text-align: center;
-    margin: 0 0 18px;
+    margin: 0 0 16px;
     color: var(--text-mute);
-    font-size: 0.9rem;
+    font-size: 0.88rem;
   }
   .esc-field { margin-bottom: 12px; }
   .esc-field label {
@@ -59,7 +59,7 @@
     color: var(--text-mute);
     margin-bottom: 4px;
   }
-  .esc-field input {
+  .esc-field input, .esc-field select {
     width: 100%;
     box-sizing: border-box;
     padding: 12px 14px;
@@ -67,25 +67,28 @@
     border: 1px solid var(--line);
     font-size: 1rem;
     font-family: var(--font-ui);
+    background: var(--paper);
   }
   .esc-btn {
     width: 100%;
     box-sizing: border-box;
-    padding: 16px;
+    padding: 14px;
     border-radius: var(--radius-md);
     border: none;
     background: var(--accent);
     color: #fff;
-    font-size: 1.05rem;
+    font-size: 1.02rem;
     font-weight: 800;
     cursor: pointer;
+    font-family: var(--font-ui);
   }
   .esc-btn:active { background: var(--accent-dark); }
+  .esc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .esc-btn-secundario {
     background: transparent;
     color: var(--text-mute);
     font-weight: 700;
-    margin-top: 10px;
+    margin-top: 8px;
     padding: 10px;
   }
   .esc-error {
@@ -99,11 +102,10 @@
     text-align: center;
     color: var(--text-mute);
     font-size: 0.85rem;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
   }
   .esc-usuario b { color: var(--text); }
 
-  /* Botón grande de escanear, pensado para dedo/pulgar en el celular */
   #btn-esc-scan {
     display: flex;
     flex-direction: column;
@@ -111,32 +113,36 @@
     justify-content: center;
     gap: 10px;
     width: 100%;
-    aspect-ratio: 1 / 0.85;
+    min-height: 140px;
     box-sizing: border-box;
     border: none;
     border-radius: var(--radius-lg);
     background: var(--accent);
     color: #fff;
-    font-size: 1.15rem;
+    font-size: 1.1rem;
     font-weight: 800;
     cursor: pointer;
+    font-family: var(--font-ui);
   }
-  #btn-esc-scan:active { background: var(--accent-dark); }
+  #btn-esc-scan svg { width: 42px; height: 42px; }
   #btn-esc-scan.escaneando { background: var(--danger); }
-  #btn-esc-scan.escaneando:active { background: var(--danger-dark); }
-  #btn-esc-scan svg { width: 46px; height: 46px; }
+  #btn-esc-scan:active { opacity: 0.92; }
 
   #esc-video-wrap {
+    display: none;
     position: relative;
     width: 100%;
-    border-radius: var(--radius-lg);
+    border-radius: 12px;
     overflow: hidden;
     background: #000;
-    margin-bottom: 14px;
-    display: none;
+    margin-bottom: 12px;
   }
   #esc-video-wrap.mostrar { display: block; }
-  #esc-video-wrap video { width: 100% !important; display: block; }
+  #esc-video-contenedor video {
+    width: 100% !important;
+    display: block;
+    border-radius: 12px;
+  }
   #esc-video-wrap::after {
     content: "";
     position: absolute;
@@ -150,80 +156,53 @@
   .esc-linterna {
     position: absolute;
     bottom: 10px; right: 10px;
-    width: 42px; height: 42px;
+    width: 38px; height: 38px;
     border-radius: 50%;
     border: none;
     background: rgba(255,255,255,0.9);
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     cursor: pointer;
+    z-index: 2;
   }
   .esc-linterna.activa { background: var(--warning); }
 
   .esc-ultimo {
-    margin-top: 16px;
-    padding: 12px 14px;
-    border-radius: var(--radius-md);
+    display: none;
+    text-align: center;
     background: var(--accent-soft);
     color: var(--accent-darker);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    margin: 12px 0;
     font-weight: 700;
-    text-align: center;
-    display: none;
+    font-size: 0.9rem;
   }
   .esc-ultimo.mostrar { display: block; }
-  .esc-ultimo small { display: block; font-weight: 500; opacity: 0.85; margin-top: 2px; }
+  .esc-ultimo small {
+    display: block;
+    margin-top: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    opacity: 0.85;
+  }
 
-  .esc-manual {
-    margin-top: 18px;
-    border-top: 1px dashed var(--line);
-    padding-top: 14px;
-  }
-  .esc-manual-fila { display: flex; gap: 8px; }
-  .esc-manual-fila input {
-    flex: 1;
-    box-sizing: border-box;
-    padding: 12px 14px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--line);
-    font-size: 1rem;
-  }
-  .esc-manual-fila button {
-    padding: 0 16px;
-    border-radius: var(--radius-md);
-    border: none;
-    background: var(--ink);
-    color: #fff;
+  .esc-separador {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0 12px;
+    color: var(--text-mute);
+    font-size: 0.75rem;
     font-weight: 700;
-    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .esc-separador::before, .esc-separador::after {
+    content: "";
+    flex: 1;
+    border-bottom: 1px solid var(--line);
   }
 
-  .esc-no-encontrado {
-    margin-top: 16px;
-    padding: 14px;
-    border-radius: var(--radius-md);
-    background: #fff7e6;
-    border: 1px solid var(--warning);
-  }
-  .esc-no-encontrado p {
-    margin: 0 0 12px;
-    font-size: 0.88rem;
-    color: var(--text);
-  }
-  .esc-no-encontrado .esc-field input {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 12px 14px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--line);
-    font-size: 1rem;
-    font-family: var(--font-ui);
-  }
-  .esc-no-encontrado .esc-btn { margin-top: 6px; }
-
-  .esc-buscar {
-    margin-top: 18px;
-    border-top: 1px dashed var(--line);
-    padding-top: 14px;
-  }
   .esc-buscar label {
     display: block;
     font-size: 0.82rem;
@@ -236,61 +215,201 @@
     box-sizing: border-box;
     padding: 12px 14px;
     border-radius: var(--radius-md);
-    border: 1px solid var(--line);
+    border: 1.5px solid var(--line);
     font-size: 1rem;
     font-family: var(--font-ui);
   }
-  .esc-buscar-resultados {
-    margin-top: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    max-height: 46vh;
-    overflow-y: auto;
-  }
+  .esc-buscar-resultados { margin-top: 8px; }
   .esc-resultado-item {
-    width: 100%;
-    box-sizing: border-box;
-    text-align: left;
-    padding: 12px 14px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--line);
-    background: var(--paper);
-    font-family: var(--font-ui);
-    cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 10px;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--paper);
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--font-ui);
+    margin-bottom: 6px;
   }
-  .esc-resultado-item:active { background: var(--accent-soft); }
-  .esc-resultado-nombre { font-weight: 700; font-size: 0.92rem; }
-  .esc-resultado-codigo { font-size: 0.78rem; color: var(--text-mute); }
-  .esc-resultado-precio { font-weight: 800; color: var(--accent-darker); white-space: nowrap; }
+  .esc-resultado-item:active { background: var(--accent-soft); border-color: var(--accent); }
+  .esc-resultado-nombre { font-weight: 700; font-size: 0.92rem; color: var(--text); }
+  .esc-resultado-codigo { font-size: 0.75rem; color: var(--text-mute); }
+  .esc-resultado-precio {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--accent-darker);
+    white-space: nowrap;
+  }
   .esc-buscar-vacio {
-    margin-top: 10px;
-    font-size: 0.85rem;
     color: var(--text-mute);
+    font-size: 0.85rem;
     text-align: center;
+    margin: 8px 0 0;
+  }
+
+  .esc-no-encontrado {
+    margin-top: 12px;
+    padding: 12px;
+    border: 2px dashed var(--warning);
+    background: var(--warning-soft);
+    border-radius: var(--radius-md);
+  }
+  .esc-no-encontrado p {
+    margin: 0 0 10px;
+    font-weight: 700;
+    color: #92400e;
+    font-size: 0.88rem;
+  }
+
+  .esc-carrito {
+    margin-top: 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 14px 14px 10px;
+    background: var(--paper);
+  }
+  .esc-carrito h3 {
+    margin: 0 0 10px;
+    font-size: 0.8rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .esc-carrito-vacio {
+    color: var(--text-mute);
+    font-size: 0.85rem;
+    text-align: center;
+    margin: 8px 0 12px;
+  }
+  .esc-carrito-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 10px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--line);
+    font-size: 0.88rem;
+  }
+  .esc-carrito-item:last-of-type { border-bottom: none; }
+  .esc-carrito-nombre { font-weight: 700; grid-column: 1 / -1; }
+  .esc-carrito-meta {
+    color: var(--text-mute);
+    font-size: 0.8rem;
+    font-family: var(--font-mono);
+  }
+  .esc-carrito-sub {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    text-align: right;
+  }
+  .esc-carrito-acciones {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 4px;
+  }
+  .esc-carrito-acciones button {
+    border: 1px solid var(--line);
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-weight: 700;
+    font-family: var(--font-ui);
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .esc-carrito-acciones .danger { color: var(--danger); border-color: var(--danger-soft); }
+  .esc-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 2px dashed var(--line);
+    font-weight: 800;
+  }
+  .esc-total span {
+    font-family: var(--font-mono);
+    font-size: 1.35rem;
+  }
+  .esc-pago { margin-top: 12px; }
+  .esc-pago label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-mute);
+    margin-bottom: 6px;
+  }
+  .esc-hint {
+    margin: 10px 0 0;
+    font-size: 0.78rem;
+    color: var(--text-mute);
+    line-height: 1.4;
+    text-align: center;
+  }
+
+  .esc-modal-overlay {
+    position: fixed; inset: 0; z-index: 400;
+    background: rgba(6, 10, 20, 0.72);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px; box-sizing: border-box;
+  }
+  .esc-modal-box {
+    background: var(--paper);
+    border-radius: var(--radius-lg);
+    padding: 22px 18px 18px;
+    width: 100%; max-width: 380px;
+    box-shadow: var(--shadow-ink);
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+  .esc-modal-box h2 {
+    margin: 0 0 6px; font-size: 1.08rem; font-weight: 800; text-align: center;
+  }
+  .esc-mcr-precio {
+    margin: 0 0 14px; text-align: center; color: var(--text-mute); font-size: 0.9rem;
+  }
+  .esc-modal-box .mcr-input-fila input {
+    width: 100%; text-align: center; font-family: var(--font-mono);
+    font-size: 1.15rem; font-weight: 700; margin-bottom: 0;
+  }
+  .esc-modal-box .modal-total {
+    font-family: var(--font-mono); font-size: 1.25rem; font-weight: 700;
+    text-align: right; border-top: 2px dashed var(--line);
+    padding-top: 12px; margin-top: 12px;
+  }
+  .esc-modal-box .modal-acciones {
+    display: flex; gap: 10px; margin-top: 16px;
+  }
+  .esc-modal-box .modal-acciones button {
+    flex: 1; margin-bottom: 0; justify-content: center;
   }
 
   #toast-esc {
     position: fixed;
+    bottom: 22px;
     left: 50%;
-    bottom: 24px;
-    transform: translateX(-50%) translateY(20px);
+    transform: translateX(-50%) translateY(6px);
     background: var(--ink);
     color: #fff;
-    padding: 12px 18px;
-    border-radius: var(--radius-md);
-    font-weight: 700;
+    padding: 12px 22px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
     font-size: 0.9rem;
     opacity: 0;
+    box-shadow: var(--shadow-lg);
+    transition: opacity 0.25s, transform 0.25s;
     pointer-events: none;
-    transition: opacity 0.2s, transform 0.2s;
+    z-index: 500;
     max-width: 90vw;
     text-align: center;
-    z-index: 500;
   }
   #toast-esc.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   #toast-esc.error { background: var(--danger); }
@@ -299,27 +418,25 @@
 <body>
 
 <div class="esc-shell">
-  <div class="esc-marca">📷 POS — Escáner remoto</div>
+  <div class="esc-marca">📷 POS — Escáner y venta móvil</div>
 
-  <!-- ===== LOGIN ===== -->
   <div class="esc-caja" id="esc-pantalla-login">
-    <p class="esc-titulo">Inicia sesión</p>
+    <h1 class="esc-titulo">Inicia sesión</h1>
     <p class="esc-sub">Usa la misma cuenta con la que trabajas en la computadora.</p>
-    <p class="esc-error" id="esc-login-error"></p>
     <form id="esc-form-login">
       <div class="esc-field">
         <label for="esc-usuario">Usuario</label>
-        <input id="esc-usuario" autocomplete="username" required autocapitalize="none">
+        <input id="esc-usuario" autocomplete="username" required>
       </div>
       <div class="esc-field">
         <label for="esc-password">Contraseña</label>
         <input id="esc-password" type="password" autocomplete="current-password" required>
       </div>
+      <p class="esc-error" id="esc-login-error"></p>
       <button type="submit" class="esc-btn">Entrar</button>
     </form>
   </div>
 
-  <!-- ===== ESCÁNER ===== -->
   <div class="esc-caja" id="esc-pantalla-scan" style="display:none">
     <p class="esc-usuario">Conectado como <b id="esc-nombre-usuario"></b></p>
 
@@ -327,7 +444,7 @@
 
     <button id="btn-esc-scan" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M3 17v2a2 2 0 0 0 2 2h2M21 7V5a2 2 0 0 0-2-2h-2M21 17v2a2 2 0 0 1-2 2h-2M7 12h10"/></svg>
-      <span id="btn-esc-scan-txt">Escanear código de barras</span>
+      <span id="btn-esc-scan-txt">Escanear → enviar a la PC</span>
     </button>
 
     <div class="esc-ultimo" id="esc-ultimo">
@@ -335,14 +452,17 @@
       <small id="esc-ultimo-codigo"></small>
     </div>
 
+    <p class="esc-hint">El código de barras va a Vender / Inventario / Alta de la computadora (misma cuenta).</p>
+
+    <div class="esc-separador">Venta en el celular</div>
+
     <div class="esc-buscar">
-      <label for="esc-buscar-input">¿No lee el código? Busca por nombre o código</label>
+      <label for="esc-buscar-input">Buscar producto por nombre o código</label>
       <input id="esc-buscar-input" placeholder="Ej. coca, huevo, 750123…" autocomplete="off" autocapitalize="none">
       <div class="esc-buscar-resultados" id="esc-buscar-resultados"></div>
       <p class="esc-buscar-vacio" id="esc-buscar-vacio" style="display:none">No se encontró ningún producto con ese nombre o código.</p>
     </div>
 
-    <!-- Aviso de producto no encontrado + alta rápida (solo admin) -->
     <div class="esc-no-encontrado" id="esc-no-encontrado" style="display:none">
       <p id="esc-texto-no-encontrado"></p>
       <form id="esc-form-alta-rapida" style="display:none">
@@ -364,12 +484,81 @@
       </form>
     </div>
 
+    <div class="esc-carrito" id="esc-carrito-panel">
+      <h3>Ticket de venta</h3>
+      <div id="esc-carrito-lista"></div>
+      <p class="esc-carrito-vacio" id="esc-carrito-vacio">Aún no hay productos. Búscalos arriba.</p>
+      <div class="esc-total">
+        Total
+        <span>$<span id="esc-total-carrito">0.00</span></span>
+      </div>
+      <div class="esc-pago">
+        <label for="esc-metodo-pago">Método de pago</label>
+        <select id="esc-metodo-pago">
+          <option value="efectivo">Efectivo</option>
+          <option value="tarjeta">Tarjeta</option>
+          <option value="transferencia">Transferencia</option>
+        </select>
+      </div>
+      <button type="button" class="esc-btn" id="esc-btn-cobrar" style="margin-top:12px" disabled>Cobrar venta</button>
+      <button type="button" class="esc-btn esc-btn-secundario" id="esc-btn-vaciar-carrito">Vaciar carrito</button>
+    </div>
+
     <button class="esc-btn esc-btn-secundario" id="esc-btn-salir" type="button">Cerrar sesión</button>
+  </div>
+</div>
+
+<div id="esc-modal-cantidad" class="esc-modal-overlay" style="display:none">
+  <div class="esc-modal-box">
+    <h2 id="esc-mcr-nombre">Producto</h2>
+    <p id="esc-mcr-precio-label" class="esc-mcr-precio"></p>
+    <div id="esc-mcr-toggle-unidad" class="mcr-toggle-unidad" style="display:none">
+      <button type="button" id="esc-mcr-btn-gramos" class="mcr-unidad-btn">Gramos</button>
+      <button type="button" id="esc-mcr-btn-kilos" class="mcr-unidad-btn">Kilos</button>
+    </div>
+    <div id="esc-mcr-presets" class="mcr-presets"></div>
+    <div class="mcr-input-fila">
+      <button type="button" id="esc-mcr-menos" class="btn-secondary">−</button>
+      <input id="esc-mcr-cantidad" type="number" step="0.001" min="0.001" inputmode="decimal">
+      <span id="esc-mcr-sufijo-unidad" class="mcr-sufijo-unidad"></span>
+      <button type="button" id="esc-mcr-mas" class="btn-secondary">+</button>
+    </div>
+    <div class="modal-total">Subtotal: $<span id="esc-mcr-subtotal">0.00</span></div>
+    <div class="modal-acciones">
+      <button type="button" id="esc-mcr-cancelar" class="btn-secondary">Cancelar</button>
+      <button type="button" id="esc-mcr-agregar" class="btn-primary">Agregar al ticket</button>
+    </div>
+  </div>
+</div>
+
+<div id="esc-modal-cobrar" class="esc-modal-overlay" style="display:none">
+  <div class="esc-modal-box">
+    <h2>Confirmar venta</h2>
+    <p id="esc-modal-venta-resumen" style="text-align:center;color:var(--text-mute);margin:0 0 6px"></p>
+    <div class="modal-total" style="text-align:center;border:none;padding-top:0;margin-top:0">
+      Total: $<span id="esc-modal-venta-total">0.00</span>
+    </div>
+
+    <div id="esc-cobro-rapido" class="cobro-rapido" style="display:none">
+      <label>Cobro rápido (efectivo)</label>
+      <div class="billetes-sugeridos" id="esc-billetes-sugeridos"></div>
+      <label class="cobro-manual-label">Otra cantidad recibida</label>
+      <div class="cobro-manual">
+        <span>$</span>
+        <input id="esc-input-recibido" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
+      </div>
+      <div id="esc-cobro-resultado" class="cobro-resultado"></div>
+    </div>
+
+    <div class="modal-acciones">
+      <button type="button" id="esc-btn-cancelar-cobro" class="btn-secondary">Cancelar</button>
+      <button type="button" id="esc-btn-confirmar-cobro" class="btn-primary">Confirmar y cobrar</button>
+    </div>
   </div>
 </div>
 
 <div id="toast-esc"></div>
 
-<script src="/static/escanear.js?v=3"></script>
+<script src="/static/escanear.js?v=5"></script>
 </body>
 </html>

@@ -259,6 +259,10 @@ class EscaneoRemoto(Base):
     la sesión de esa MISMA cuenta abierta, pregunta cada cierto tiempo
     "¿hay algo nuevo para mí?" y lo consume.
 
+    Opcionalmente trae `cantidad`: cuando el cajero captura gramos/kg o
+    piezas desde el celular, llega ya lista para sumarse al carrito de
+    la PC sin volver a pedir la cantidad en pantalla.
+
     No hace falta emparejar dispositivos: el "amarre" entre celular y
     compu es, sencillamente, que ambos iniciaron sesión con el mismo
     usuario (por eso conviene una cuenta de cajero dedicada para esto si
@@ -269,6 +273,9 @@ class EscaneoRemoto(Base):
     id = Column(Integer, primary_key=True, index=True)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
     codigo_barras = Column(String, nullable=False)
+    # Cantidad opcional capturada en el celular (kg o piezas). Null =
+    # solo se mandó el código (flujo clásico: la PC decide cantidad).
+    cantidad = Column(Float, nullable=True)
     fecha = Column(DateTime, default=datetime.now)
     # Se marca True en cuanto la computadora lo recoge, para no volver a
     # entregarlo ni acumular basura de escaneos viejos sin usar.

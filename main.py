@@ -56,6 +56,16 @@ def _migrar_esquema():
             conn.exec_driver_sql("ALTER TABLE movimientos_inventario ADD COLUMN costo_unitario FLOAT")
             conn.commit()
 
+        # Cantidad opcional en escaneo remoto (celular manda gramos/kg/piezas).
+        try:
+            columnas_esc = [fila[1] for fila in conn.exec_driver_sql("PRAGMA table_info(escaneos_remotos)").fetchall()]
+            if columnas_esc and "cantidad" not in columnas_esc:
+                conn.exec_driver_sql("ALTER TABLE escaneos_remotos ADD COLUMN cantidad FLOAT")
+                conn.commit()
+        except Exception:
+            # Tabla aún no existe: create_all la creará con la columna nueva.
+            pass
+
 
 _migrar_esquema()
 
@@ -150,6 +160,8 @@ def recibir_escaneo_remoto(
     if not codigo:
         raise HTTPException(400, "Código vacío")
 
+    cantidad = datos.cantidad if datos.cantidad is not None and datos.cantidad > 0 else None
+
     # Se descartan los escaneos previos sin recoger de este mismo usuario:
     # si escaneaste dos códigos seguidos sin que la compu alcanzara a leer
     # el primero, lo que importa es el más reciente, no ir en fila.
@@ -158,7 +170,11 @@ def recibir_escaneo_remoto(
         models.EscaneoRemoto.consumido == False,  # noqa: E712
     ).delete()
 
-    nuevo = models.EscaneoRemoto(usuario_id=usuario.id, codigo_barras=codigo)
+    nuevo = models.EscaneoRemoto(
+        usuario_id=usuario.id,
+        codigo_barras=codigo,
+        cantidad=cantidad,
+    )
     db.add(nuevo)
     db.commit()
     return {"ok": True}
@@ -183,7 +199,11 @@ def recoger_escaneo_remoto(
 
     pendiente.consumido = True
     db.commit()
-    return schemas.EscaneoRemotoOut(codigo_barras=pendiente.codigo_barras, fecha=pendiente.fecha)
+    return schemas.EscaneoRemotoOut(
+        codigo_barras=pendiente.codigo_barras,
+        cantidad=pendiente.cantidad,
+        fecha=pendiente.fecha,
+    )
 
 
 # ============================================================

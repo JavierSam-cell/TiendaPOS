@@ -396,11 +396,15 @@ class OtroGastoOut(BaseModel):
 # ---------- Escaneo remoto (celular -> computadora) ----------
 class EscaneoRemotoCrear(BaseModel):
     codigo_barras: str = Field(min_length=1)
+    # Cantidad opcional (piezas o kg) capturada en el celular. Si viene,
+    # la PC la suma directo al carrito sin abrir el modal de cantidad.
+    cantidad: Optional[float] = Field(default=None, gt=0)
 
 
 class EscaneoRemotoOut(BaseModel):
     # None cuando no hay ningún escaneo nuevo pendiente.
     codigo_barras: Optional[str] = None
+    cantidad: Optional[float] = None
     fecha: Optional[datetime] = None
 
 

@@ -440,6 +440,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
 // Vender -> se agrega al carrito; Agregar producto -> llena el código;
 // Agregar inventario -> busca el producto para el movimiento.
 // ---------------------------------------------------------
+// Puede ser string (código solo, compat) o { codigo_barras, cantidad? }.
 let _codigoRemotoPendiente = null;
 
 async function revisarEscaneoRemoto() {
@@ -447,7 +448,10 @@ async function revisarEscaneoRemoto() {
   try {
     const d = await api("/escaneo-remoto/pendiente");
     if (d && d.codigo_barras) {
-      _codigoRemotoPendiente = d.codigo_barras;
+      _codigoRemotoPendiente = {
+        codigo_barras: d.codigo_barras,
+        cantidad: d.cantidad != null && d.cantidad > 0 ? Number(d.cantidad) : null,
+      };
       aplicarCodigoRemotoSiCorresponde();
     }
   } catch (e) {
@@ -457,12 +461,21 @@ async function revisarEscaneoRemoto() {
 
 function aplicarCodigoRemotoSiCorresponde() {
   if (!_codigoRemotoPendiente) return;
-  const codigo = _codigoRemotoPendiente;
+  const pendiente = typeof _codigoRemotoPendiente === "string"
+    ? { codigo_barras: _codigoRemotoPendiente, cantidad: null }
+    : _codigoRemotoPendiente;
+  const codigo = pendiente.codigo_barras;
+  const cantidad = pendiente.cantidad;
   const tabActiva = document.querySelector(".tab-btn.active")?.dataset.tab;
 
   if (tabActiva === "venta") {
     _codigoRemotoPendiente = null;
-    agregarAlCarritoPorCodigo(codigo); // ya avisa con su propio toast/bip
+    if (cantidad != null && cantidad > 0) {
+      // Cantidad ya capturada en el celular: se agrega directo al carrito.
+      agregarAlCarritoConCantidad(codigo, cantidad);
+    } else {
+      agregarAlCarritoPorCodigo(codigo); // modal de cantidad en PC si es granel
+    }
   } else if (tabActiva === "productos") {
     _codigoRemotoPendiente = null;
     document.getElementById("prod-codigo").value = codigo;
@@ -478,6 +491,63 @@ function aplicarCodigoRemotoSiCorresponde() {
     // etc.): se queda en espera y se usa solo en cuanto entres a Vender,
     // Agregar producto o Agregar inventario.
     toast(`Código escaneado desde el celular (${codigo}): ve a Vender, Agregar producto o Agregar inventario para usarlo`, true);
+  }
+}
+
+/** Agrega al carrito con una cantidad ya definida (viene del celular). */
+async function agregarAlCarritoConCantidad(codigo, cantidad) {
+  ocultarAlertaNoEncontrado();
+  try {
+    const producto = await api(`/productos/codigo/${encodeURIComponent(codigo)}`);
+    if (!producto.activo) {
+      toast("Ese producto está dado de baja", true);
+      return;
+    }
+    if (!cantidad || cantidad <= 0) {
+      toast("Cantidad inválida recibida del celular", true);
+      return;
+    }
+    if (producto.stock != null && cantidad > producto.stock) {
+      toast(
+        `No hay suficiente stock de "${producto.nombre}" (disponible: ${formatearCantidad(producto.stock, producto.unidad_venta)})`,
+        true
+      );
+      return;
+    }
+
+    const existente = carrito.find((i) => i.codigo_barras === codigo);
+    if (existente) {
+      const nueva = existente.cantidad + cantidad;
+      if (producto.stock != null && nueva > producto.stock) {
+        toast(
+          `No hay suficiente stock de "${producto.nombre}" (disponible: ${formatearCantidad(producto.stock, producto.unidad_venta)})`,
+          true
+        );
+        return;
+      }
+      existente.cantidad = nueva;
+      existente.stock = producto.stock;
+    } else {
+      carrito.push({
+        codigo_barras: producto.codigo_barras,
+        nombre: producto.nombre,
+        precio: producto.precio_venta,
+        cantidad,
+        stock: producto.stock,
+        unidad_venta: producto.unidad_venta || "pieza",
+      });
+    }
+    renderCarrito();
+    sonidoBeepEscaneo();
+    toast(`${producto.nombre} × ${formatearCantidad(cantidad, producto.unidad_venta)} agregado`);
+    const buscador = document.getElementById("buscar-venta-rapida");
+    if (buscador) { buscador.value = ""; buscador.focus(); filtrarVentaRapida(""); }
+  } catch (e) {
+    if (e.message.includes("no encontrado") || e.message.includes("Producto no")) {
+      mostrarAlertaNoEncontrado(codigo);
+    } else {
+      toast(e.message, true);
+    }
   }
 }
 

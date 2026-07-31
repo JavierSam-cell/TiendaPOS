@@ -1,14 +1,10 @@
 const API = "/api";
-// Mismas llaves de localStorage que usa app.js: si en este mismo celular
-// alguna vez abres el sistema completo con esta cuenta, la sesión ya
-// queda compartida (y viceversa), sin tener que loguearte dos veces.
+// Mismas llaves de localStorage que usa app.js.
 let sesion = { token: null, usuario: null };
-
-// Permisos granulares del usuario (igual que en app.js): un cajero puede
-// tener permiso de "productos.agregar" aunque no sea admin, así que el
-// alta rápida desde el escaneo se habilita según este permiso, no según
-// el rol.
 let permisosEfectivos = {};
+
+// Carrito LOCAL de la venta desde el celular (independiente del de la PC).
+let carritoEsc = []; // [{codigo_barras, nombre, precio, cantidad, stock, unidad_venta}]
 
 function tienePermiso(...claves) {
   if (!sesion.usuario) return false;
@@ -28,9 +24,6 @@ async function cargarPermisos() {
   }
 }
 
-// ---------------------------------------------------------
-// Toast + bip (igual que en el sistema principal)
-// ---------------------------------------------------------
 function toast(msg, isError = false) {
   const t = document.getElementById("toast-esc");
   t.textContent = msg;
@@ -58,7 +51,7 @@ function sonidoBeepEscaneo() {
     gain.connect(ctx.destination);
     osc.start(ahora);
     osc.stop(ahora + 0.1);
-  } catch (e) { /* si el navegador bloquea audio, no pasa nada grave */ }
+  } catch (e) { /* ignore */ }
 }
 
 async function api(path, options = {}) {
@@ -95,6 +88,7 @@ function cerrarSesionLocal() {
   localStorage.removeItem("pos_token");
   localStorage.removeItem("pos_usuario");
   sesion = { token: null, usuario: null };
+  carritoEsc = [];
   detenerEscaneoSiActivo();
   mostrarPantallaLogin();
 }
@@ -110,6 +104,7 @@ function mostrarPantallaScan() {
   document.getElementById("esc-nombre-usuario").textContent =
     sesion.usuario.nombre_completo || sesion.usuario.username;
   cargarCatalogoEsc();
+  renderCarritoEsc();
 }
 
 document.getElementById("esc-form-login").addEventListener("submit", async (e) => {
@@ -142,15 +137,12 @@ document.getElementById("esc-btn-salir").addEventListener("click", () => {
 });
 
 // ---------------------------------------------------------
-// ESCÁNER (misma técnica de recorte + zoom que en app.js: solo se
-// analiza el recuadro guía, no la foto completa, para leer rápido y sin
-// errores).
+// ESCÁNER → envía solo el código a la PC (puente remoto)
 // ---------------------------------------------------------
 const FORMATOS_CODIGO_BARRAS = [
   "ean_13", "ean_8", "upc_a", "upc_e",
   "code_128", "code_39", "code_93", "codabar", "itf", "qr_code",
 ];
-// Debe coincidir con #esc-video-wrap::after en el <style> de escanear.html.
 const RECUADRO_GUIA_ANCHO = 0.78;
 const RECUADRO_GUIA_ALTO = 0.30;
 
@@ -188,7 +180,8 @@ function detenerEscaneoSiActivo() {
   document.getElementById("esc-video-contenedor").innerHTML = "";
   const btn = document.getElementById("btn-esc-scan");
   btn.classList.remove("escaneando");
-  document.getElementById("btn-esc-scan-txt").textContent = "Escanear código de barras";
+  document.getElementById("btn-esc-scan-txt").textContent = "Escanear → enviar a la PC";
+  document.querySelectorAll(".esc-linterna").forEach((b) => b.remove());
 }
 
 function iniciarEscaneo() {
@@ -292,8 +285,9 @@ function iniciarEscaneo() {
             }
 
             if (vecesSeguidas >= 2) {
-              enviarCodigoEscaneado(elegido.rawValue);
               detenerEscaneoSiActivo();
+              // Solo manda el código a la PC (no abre venta local).
+              enviarCodigoAComputadora(elegido.rawValue);
               return;
             }
             requestAnimationFrame(detectarCuadro);
@@ -315,10 +309,8 @@ document.getElementById("btn-esc-scan").addEventListener("click", () => {
   else detenerEscaneoSiActivo();
 });
 
-// ---------------------------------------------------------
-// Enviar el código a la computadora + entrada manual de respaldo
-// ---------------------------------------------------------
-async function enviarCodigoEscaneado(codigo) {
+/** Envía el código a la computadora (puente remoto). No toca el carrito local. */
+async function enviarCodigoAComputadora(codigo) {
   try {
     await api("/escaneo-remoto", {
       method: "POST",
@@ -330,31 +322,21 @@ async function enviarCodigoEscaneado(codigo) {
     document.getElementById("esc-ultimo-codigo").textContent = codigo;
     ultimo.classList.add("mostrar");
     setTimeout(() => ultimo.classList.remove("mostrar"), 3000);
-    // Además de mandarlo a la compu, se revisa aquí mismo si el producto
-    // existe: si no, se ofrece darlo de alta desde el celular (igual que
-    // en la pantalla de Vender), en vez de dejar al usuario sin saber
-    // qué pasó con el código que acaba de escanear.
+    // Si no existe, ofrece alta rápida aquí.
     revisarCodigoLocal(codigo);
   } catch (err) {
     toast(err.message || "No se pudo enviar el código", true);
   }
 }
 
-// ---------------------------------------------------------
-// Si el código no está en el catálogo, se busca en internet y se
-// ofrece darlo de alta directo desde el celular (mismo flujo que la
-// pantalla de Vender en la computadora).
-// ---------------------------------------------------------
 async function revisarCodigoLocal(codigo) {
   ocultarNoEncontrado();
   try {
     await api(`/productos/codigo/${encodeURIComponent(codigo)}`);
-    // El producto ya existe: no hace falta nada más, ya se mandó a la compu.
   } catch (err) {
     if (err.message.includes("no encontrado") || err.message.includes("Producto no")) {
       mostrarNoEncontrado(codigo);
     }
-    // Otros errores (de red, etc.) se ignoran aquí para no interrumpir el escaneo.
   }
 }
 
@@ -409,19 +391,15 @@ document.getElementById("esc-form-alta-rapida").addEventListener("submit", async
     toast("Producto dado de alta");
     ocultarNoEncontrado();
     cargarCatalogoEsc();
-    // Se vuelve a mandar el código: ahora sí existe, así que si en la
-    // compu están parados en Vender lo agrega solo al carrito.
-    enviarCodigoEscaneado(codigo);
+    // Se vuelve a mandar a la PC para que lo use en Vender/Inventario.
+    await enviarCodigoAComputadora(codigo);
   } catch (err) {
     toast(err.message || "No se pudo dar de alta el producto", true);
   }
 });
 
 // ---------------------------------------------------------
-// Buscador por nombre o código (para cuando la cámara no lee el
-// código): mismo criterio que el buscador de la pantalla Vender.
-// Se trae el catálogo una vez (al entrar a la pantalla de escaneo)
-// y se filtra localmente mientras el cajero escribe.
+// BÚSQUEDA → venta LOCAL en el celular
 // ---------------------------------------------------------
 function normalizarTexto(texto) {
   return (texto || "")
@@ -458,6 +436,13 @@ function _pareceCodigoBarrasEsc(texto) {
   return /^[0-9]{6,}$/.test(t) || /^INT-[0-9A-F]+$/i.test(t);
 }
 
+function formatearCantidadEsc(cantidad, unidadVenta) {
+  if (unidadVenta === "kg") {
+    return cantidad < 1 ? `${Math.round(cantidad * 1000)} g` : `${Number(cantidad).toFixed(3)} kg`;
+  }
+  return String(cantidad);
+}
+
 function renderResultadosBusquedaEsc(productos) {
   const cont = document.getElementById("esc-buscar-resultados");
   const vacio = document.getElementById("esc-buscar-vacio");
@@ -473,7 +458,9 @@ function renderResultadosBusquedaEsc(productos) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "esc-resultado-item";
-    const precioTexto = p.unidad_venta === "kg" ? `$${p.precio_venta.toFixed(2)}/kg` : `$${p.precio_venta.toFixed(2)}`;
+    const precioTexto = p.unidad_venta === "kg"
+      ? `$${Number(p.precio_venta).toFixed(2)}/kg`
+      : `$${Number(p.precio_venta).toFixed(2)}`;
     btn.innerHTML = `
       <span>
         <span class="esc-resultado-nombre">${p.nombre}</span><br>
@@ -482,10 +469,11 @@ function renderResultadosBusquedaEsc(productos) {
       <span class="esc-resultado-precio">${precioTexto}</span>
     `;
     btn.addEventListener("click", () => {
-      enviarCodigoEscaneado(p.codigo_barras);
       document.getElementById("esc-buscar-input").value = "";
       renderResultadosBusquedaEsc([]);
       document.getElementById("esc-buscar-vacio").style.display = "none";
+      // Venta local: pide cantidad y agrega al ticket del celular.
+      elegirProductoParaTicket(p);
     });
     cont.appendChild(btn);
   });
@@ -507,37 +495,32 @@ async function resolverBusquedaEscConEnter() {
   const crudo = (input.value || "").trim();
   if (!crudo) return;
 
-  // 1) Coincidencia exacta de código de barras
   const porCodigo = _catalogoEsc.find(
     (p) => (p.codigo_barras || "").toLowerCase() === crudo.toLowerCase()
   );
   if (porCodigo) {
     input.value = "";
     filtrarBusquedaEsc("");
-    enviarCodigoEscaneado(porCodigo.codigo_barras);
+    elegirProductoParaTicket(porCodigo);
     return;
   }
 
-  // 2) Parece código de barras aunque no esté en el catálogo: se manda
-  // igual, tal cual se haría si el lector lo hubiera leído (dispara el
-  // flujo de "no encontrado" si de verdad no existe).
+  // Código de barras que no está en catálogo: se manda a la PC (como el escáner).
   if (_pareceCodigoBarrasEsc(crudo)) {
     input.value = "";
     filtrarBusquedaEsc("");
-    enviarCodigoEscaneado(crudo);
+    await enviarCodigoAComputadora(crudo);
     return;
   }
 
-  // 3) Un solo resultado por nombre → se manda directo
   const resultados = _resultadosBusquedaEsc(crudo);
   if (resultados.length === 1) {
     input.value = "";
     filtrarBusquedaEsc("");
-    enviarCodigoEscaneado(resultados[0].codigo_barras);
+    elegirProductoParaTicket(resultados[0]);
     return;
   }
 
-  // 4) Varios o ninguno: se deja la lista filtrada visible
   if (resultados.length === 0) {
     toast("No se encontró ese producto", true);
   } else {
@@ -552,6 +535,430 @@ document.getElementById("esc-buscar-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     e.preventDefault();
     resolverBusquedaEscConEnter();
+  }
+});
+
+// ---------------------------------------------------------
+// Modal de cantidad → agrega al CARRITO LOCAL
+// ---------------------------------------------------------
+let _escProductoModal = null;
+let _escIdxEdicion = null;
+let _escUnidadModal = "g";
+
+function _escCantidadEnKgDesdeInput() {
+  const valor = parseFloat(document.getElementById("esc-mcr-cantidad").value) || 0;
+  return _escUnidadModal === "g" ? valor / 1000 : valor;
+}
+
+function elegirProductoParaTicket(producto, idxExistente = null) {
+  if (!producto || producto.activo === false) {
+    toast("Ese producto no está disponible", true);
+    return;
+  }
+  abrirModalCantidadEsc(producto, idxExistente);
+}
+
+function abrirModalCantidadEsc(producto, idxExistente = null) {
+  _escProductoModal = producto;
+  _escIdxEdicion = idxExistente;
+  const esKg = producto.unidad_venta === "kg";
+  document.getElementById("esc-mcr-nombre").textContent = producto.nombre;
+  document.getElementById("esc-mcr-precio-label").textContent = esKg
+    ? `Precio: $${Number(producto.precio_venta).toFixed(2)} por kilogramo`
+    : `Precio: $${Number(producto.precio_venta).toFixed(2)} c/u`;
+
+  const cantidadPreviaKg = idxExistente !== null
+    ? carritoEsc[idxExistente].cantidad
+    : (esKg ? 0.1 : 1);
+
+  document.getElementById("esc-mcr-toggle-unidad").style.display = esKg ? "flex" : "none";
+  if (esKg) {
+    _escUnidadModal = cantidadPreviaKg >= 0.5 ? "kg" : "g";
+    _escConfigurarUnidadModal(cantidadPreviaKg);
+  } else {
+    _escUnidadModal = "pieza";
+    document.getElementById("esc-mcr-sufijo-unidad").textContent = "";
+    const input = document.getElementById("esc-mcr-cantidad");
+    input.step = "1";
+    input.min = "1";
+    input.value = cantidadPreviaKg;
+    document.getElementById("esc-mcr-presets").innerHTML = "";
+  }
+  actualizarSubtotalModalEsc();
+  document.getElementById("esc-modal-cantidad").style.display = "flex";
+  setTimeout(() => {
+    const inp = document.getElementById("esc-mcr-cantidad");
+    inp.focus();
+    inp.select();
+  }, 50);
+}
+
+function _escConfigurarUnidadModal(cantidadKg) {
+  const input = document.getElementById("esc-mcr-cantidad");
+  const sufijo = document.getElementById("esc-mcr-sufijo-unidad");
+  const btnGramos = document.getElementById("esc-mcr-btn-gramos");
+  const btnKilos = document.getElementById("esc-mcr-btn-kilos");
+  const presets = document.getElementById("esc-mcr-presets");
+
+  btnGramos.classList.toggle("activo", _escUnidadModal === "g");
+  btnKilos.classList.toggle("activo", _escUnidadModal === "kg");
+  presets.innerHTML = "";
+
+  if (_escUnidadModal === "g") {
+    sufijo.textContent = "g";
+    input.step = "1";
+    input.min = "1";
+    input.value = Math.round(cantidadKg * 1000);
+    [100, 150, 200, 250].forEach((gramos) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn-secondary";
+      b.textContent = `${gramos} g`;
+      b.addEventListener("click", () => {
+        input.value = gramos;
+        actualizarSubtotalModalEsc();
+      });
+      presets.appendChild(b);
+    });
+  } else {
+    sufijo.textContent = "kg";
+    input.step = "0.1";
+    input.min = "0.1";
+    input.value = Math.round(cantidadKg * 10) / 10;
+    [0.5, 1, 1.5, 2].forEach((kilos) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn-secondary";
+      b.textContent = `${kilos} kg`;
+      b.addEventListener("click", () => {
+        input.value = kilos;
+        actualizarSubtotalModalEsc();
+      });
+      presets.appendChild(b);
+    });
+  }
+}
+
+function actualizarSubtotalModalEsc() {
+  if (!_escProductoModal) return;
+  const cantidadKg = _escUnidadModal === "pieza"
+    ? (parseFloat(document.getElementById("esc-mcr-cantidad").value) || 0)
+    : _escCantidadEnKgDesdeInput();
+  const subtotal = cantidadKg * Number(_escProductoModal.precio_venta || 0);
+  document.getElementById("esc-mcr-subtotal").textContent = subtotal.toFixed(2);
+}
+
+function _escPasoModal() {
+  if (_escUnidadModal === "g") return 10;
+  if (_escUnidadModal === "kg") return 0.5;
+  return 1;
+}
+
+document.getElementById("esc-mcr-btn-gramos").addEventListener("click", () => {
+  if (_escUnidadModal === "g") return;
+  const cantidadKg = _escCantidadEnKgDesdeInput();
+  _escUnidadModal = "g";
+  _escConfigurarUnidadModal(cantidadKg);
+  actualizarSubtotalModalEsc();
+});
+document.getElementById("esc-mcr-btn-kilos").addEventListener("click", () => {
+  if (_escUnidadModal === "kg") return;
+  const cantidadKg = _escCantidadEnKgDesdeInput();
+  _escUnidadModal = "kg";
+  _escConfigurarUnidadModal(cantidadKg);
+  actualizarSubtotalModalEsc();
+});
+document.getElementById("esc-mcr-cantidad").addEventListener("input", actualizarSubtotalModalEsc);
+document.getElementById("esc-mcr-menos").addEventListener("click", () => {
+  const input = document.getElementById("esc-mcr-cantidad");
+  const paso = _escPasoModal();
+  const nuevo = Math.max(paso, (parseFloat(input.value) || 0) - paso);
+  input.value = _escUnidadModal === "kg" ? Math.round(nuevo * 10) / 10 : nuevo;
+  actualizarSubtotalModalEsc();
+});
+document.getElementById("esc-mcr-mas").addEventListener("click", () => {
+  const input = document.getElementById("esc-mcr-cantidad");
+  const paso = _escPasoModal();
+  const nuevo = (parseFloat(input.value) || 0) + paso;
+  input.value = _escUnidadModal === "kg" ? Math.round(nuevo * 10) / 10 : nuevo;
+  actualizarSubtotalModalEsc();
+});
+document.getElementById("esc-mcr-cancelar").addEventListener("click", () => {
+  document.getElementById("esc-modal-cantidad").style.display = "none";
+  _escProductoModal = null;
+  _escIdxEdicion = null;
+});
+document.getElementById("esc-mcr-agregar").addEventListener("click", () => {
+  const cantidad = _escUnidadModal === "pieza"
+    ? parseFloat(document.getElementById("esc-mcr-cantidad").value)
+    : _escCantidadEnKgDesdeInput();
+  if (!cantidad || cantidad <= 0) {
+    toast("Ingresa una cantidad válida", true);
+    return;
+  }
+  const p = _escProductoModal;
+  if (p.stock != null && cantidad > p.stock) {
+    toast(
+      `No hay suficiente stock (disponible: ${formatearCantidadEsc(p.stock, p.unidad_venta)})`,
+      true
+    );
+    return;
+  }
+
+  if (_escIdxEdicion !== null) {
+    carritoEsc[_escIdxEdicion].cantidad = cantidad;
+  } else {
+    const existente = carritoEsc.find((i) => i.codigo_barras === p.codigo_barras);
+    if (existente && p.unidad_venta !== "kg") {
+      const nueva = existente.cantidad + cantidad;
+      if (p.stock != null && nueva > p.stock) {
+        toast(
+          `No hay suficiente stock (disponible: ${formatearCantidadEsc(p.stock, p.unidad_venta)})`,
+          true
+        );
+        return;
+      }
+      existente.cantidad = nueva;
+      existente.stock = p.stock;
+    } else if (existente && p.unidad_venta === "kg") {
+      const nueva = existente.cantidad + cantidad;
+      if (p.stock != null && nueva > p.stock) {
+        toast(
+          `No hay suficiente stock (disponible: ${formatearCantidadEsc(p.stock, p.unidad_venta)})`,
+          true
+        );
+        return;
+      }
+      existente.cantidad = nueva;
+      existente.stock = p.stock;
+    } else {
+      carritoEsc.push({
+        codigo_barras: p.codigo_barras,
+        nombre: p.nombre,
+        precio: p.precio_venta,
+        cantidad,
+        stock: p.stock,
+        unidad_venta: p.unidad_venta || "pieza",
+      });
+    }
+  }
+
+  document.getElementById("esc-modal-cantidad").style.display = "none";
+  _escProductoModal = null;
+  _escIdxEdicion = null;
+  renderCarritoEsc();
+  sonidoBeepEscaneo();
+  toast(`${p.nombre} agregado al ticket`);
+});
+
+// ---------------------------------------------------------
+// Carrito local + cobro (igual criterio que pantalla Vender)
+// ---------------------------------------------------------
+function renderCarritoEsc() {
+  const lista = document.getElementById("esc-carrito-lista");
+  const vacio = document.getElementById("esc-carrito-vacio");
+  const btnCobrar = document.getElementById("esc-btn-cobrar");
+  lista.innerHTML = "";
+  let total = 0;
+
+  if (carritoEsc.length === 0) {
+    vacio.style.display = "block";
+    btnCobrar.disabled = true;
+    document.getElementById("esc-total-carrito").textContent = "0.00";
+    return;
+  }
+  vacio.style.display = "none";
+  btnCobrar.disabled = false;
+
+  carritoEsc.forEach((item, idx) => {
+    const subtotal = item.precio * item.cantidad;
+    total += subtotal;
+    const esKg = item.unidad_venta === "kg";
+    const div = document.createElement("div");
+    div.className = "esc-carrito-item";
+    div.innerHTML = `
+      <div class="esc-carrito-nombre">${item.nombre}</div>
+      <div class="esc-carrito-meta">
+        $${Number(item.precio).toFixed(2)}${esKg ? "/kg" : ""} × ${formatearCantidadEsc(item.cantidad, item.unidad_venta)}
+      </div>
+      <div class="esc-carrito-sub">$${subtotal.toFixed(2)}</div>
+      <div class="esc-carrito-acciones">
+        <button type="button" data-editar="${idx}">✎ Cantidad</button>
+        <button type="button" class="danger" data-quitar="${idx}">✕ Quitar</button>
+      </div>
+    `;
+    lista.appendChild(div);
+  });
+
+  lista.querySelectorAll("[data-editar]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.editar, 10);
+      const item = carritoEsc[idx];
+      elegirProductoParaTicket(
+        {
+          codigo_barras: item.codigo_barras,
+          nombre: item.nombre,
+          precio_venta: item.precio,
+          stock: item.stock,
+          unidad_venta: item.unidad_venta,
+          activo: true,
+        },
+        idx
+      );
+    });
+  });
+  lista.querySelectorAll("[data-quitar]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      carritoEsc.splice(parseInt(btn.dataset.quitar, 10), 1);
+      renderCarritoEsc();
+    });
+  });
+
+  document.getElementById("esc-total-carrito").textContent = total.toFixed(2);
+}
+
+document.getElementById("esc-btn-vaciar-carrito").addEventListener("click", () => {
+  if (carritoEsc.length === 0) return;
+  carritoEsc = [];
+  renderCarritoEsc();
+  toast("Carrito vacío");
+});
+
+// ---- Cobro rápido (mismos billetes MXN que en la PC) ----
+const DENOMINACIONES_MXN = [20, 50, 100, 200, 500];
+
+function _calcularOpcionesCobro(total) {
+  let opciones = DENOMINACIONES_MXN.filter((billete) => billete >= total);
+  if (opciones.length === 0) {
+    const candidatos = new Set([
+      Math.ceil(total / 500) * 500,
+      Math.ceil(total / 1000) * 1000,
+      Math.ceil(total / 500) * 500 + 500,
+    ]);
+    opciones = [...candidatos].filter((v) => v >= total).sort((a, b) => a - b);
+  }
+  return opciones.slice(0, 3);
+}
+
+function _mostrarResultadoCobroEsc(total, recibido) {
+  const resultado = document.getElementById("esc-cobro-resultado");
+  if (recibido === null || recibido === undefined || isNaN(recibido)) {
+    resultado.textContent = "";
+    resultado.className = "cobro-resultado";
+    return;
+  }
+  const diferencia = recibido - total;
+  if (diferencia < 0) {
+    resultado.textContent = `Faltan $${Math.abs(diferencia).toFixed(2)}`;
+    resultado.className = "cobro-resultado cambio-falta";
+  } else if (diferencia === 0) {
+    resultado.textContent = "Pago exacto, sin cambio";
+    resultado.className = "cobro-resultado cambio-ok";
+  } else {
+    resultado.textContent = `Cambio a entregar: $${diferencia.toFixed(2)}`;
+    resultado.className = "cobro-resultado cambio-ok";
+  }
+}
+
+function _crearChipCobroEsc(monto, total, textoSecundario) {
+  const inputRecibido = document.getElementById("esc-input-recibido");
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "chip-billete";
+  chip.innerHTML = `<span class="chip-billete-monto">$${monto % 1 === 0 ? monto : monto.toFixed(2)}</span><span class="chip-billete-cambio">${textoSecundario}</span>`;
+  chip.addEventListener("click", () => {
+    inputRecibido.value = monto;
+    document.querySelectorAll("#esc-billetes-sugeridos .chip-billete").forEach((c) => c.classList.remove("activo"));
+    chip.classList.add("activo");
+    _mostrarResultadoCobroEsc(total, monto);
+  });
+  return chip;
+}
+
+function _prepararCobroRapidoEsc(total) {
+  const contenedor = document.getElementById("esc-billetes-sugeridos");
+  const inputRecibido = document.getElementById("esc-input-recibido");
+  contenedor.innerHTML = "";
+  inputRecibido.value = "";
+  _mostrarResultadoCobroEsc(total, null);
+
+  const opciones = _calcularOpcionesCobro(total);
+  const yaHayExacto = opciones.some((billete) => Math.abs(billete - total) < 0.005);
+  if (!yaHayExacto) {
+    contenedor.appendChild(_crearChipCobroEsc(total, total, "Pago exacto"));
+  }
+  opciones.forEach((billete) => {
+    const cambio = billete - total;
+    contenedor.appendChild(
+      _crearChipCobroEsc(billete, total, cambio > 0 ? `Cambio $${cambio.toFixed(2)}` : "Pago exacto")
+    );
+  });
+}
+
+function abrirModalCobrarEsc() {
+  if (carritoEsc.length === 0) {
+    toast("El carrito está vacío", true);
+    return;
+  }
+  const total = carritoEsc.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
+  const numArticulos = carritoEsc.reduce((acc, i) => acc + i.cantidad, 0);
+  const metodoSel = document.getElementById("esc-metodo-pago");
+  const metodo = metodoSel.selectedOptions[0].textContent;
+  const esEfectivo = metodoSel.value === "efectivo";
+
+  document.getElementById("esc-modal-venta-resumen").textContent =
+    `${formatearCantidadEsc(numArticulos, "pieza")} artículo(s) · Pago: ${metodo}`;
+  document.getElementById("esc-modal-venta-total").textContent = total.toFixed(2);
+
+  document.getElementById("esc-cobro-rapido").style.display = esEfectivo ? "block" : "none";
+  if (esEfectivo) _prepararCobroRapidoEsc(total);
+
+  document.getElementById("esc-modal-cobrar").style.display = "flex";
+}
+
+function cerrarModalCobrarEsc() {
+  document.getElementById("esc-modal-cobrar").style.display = "none";
+}
+
+document.getElementById("esc-btn-cobrar").addEventListener("click", abrirModalCobrarEsc);
+document.getElementById("esc-btn-cancelar-cobro").addEventListener("click", cerrarModalCobrarEsc);
+
+document.getElementById("esc-input-recibido").addEventListener("input", (e) => {
+  document.querySelectorAll("#esc-billetes-sugeridos .chip-billete").forEach((c) => c.classList.remove("activo"));
+  const total = parseFloat(document.getElementById("esc-modal-venta-total").textContent) || 0;
+  const recibido = parseFloat(e.target.value);
+  _mostrarResultadoCobroEsc(total, e.target.value.trim() === "" ? null : recibido);
+});
+
+document.getElementById("esc-btn-confirmar-cobro").addEventListener("click", async () => {
+  const btn = document.getElementById("esc-btn-confirmar-cobro");
+  btn.disabled = true;
+  try {
+    const venta = await api("/ventas", {
+      method: "POST",
+      body: JSON.stringify({
+        items: carritoEsc.map((i) => ({ codigo_barras: i.codigo_barras, cantidad: i.cantidad })),
+        metodo_pago: document.getElementById("esc-metodo-pago").value,
+      }),
+    });
+
+    const esEfectivo = document.getElementById("esc-metodo-pago").value === "efectivo";
+    const recibido = parseFloat(document.getElementById("esc-input-recibido").value);
+    let mensaje = `Venta #${venta.id} — Total $${Number(venta.total).toFixed(2)}`;
+    if (esEfectivo && !isNaN(recibido) && recibido >= venta.total) {
+      mensaje += ` — Cambio: $${(recibido - venta.total).toFixed(2)}`;
+    }
+    toast(mensaje);
+
+    carritoEsc = [];
+    renderCarritoEsc();
+    cerrarModalCobrarEsc();
+    cargarCatalogoEsc(); // refresca stock
+  } catch (e) {
+    toast(e.message, true);
+    cerrarModalCobrarEsc();
+  } finally {
+    btn.disabled = false;
   }
 });
 
