@@ -95,6 +95,53 @@ async function descargarArchivo(path, nombreArchivo) {
   }
 }
 
+/** Igual que descargarArchivo, pero con POST + body JSON (para PDFs que
+ *  necesitan las cantidades ajustadas del modal de pedido). */
+async function descargarArchivoPost(path, body, nombreArchivo) {
+  if (_descargaEnCurso) return;
+  _descargaEnCurso = true;
+  try {
+    const res = await fetch(API + path, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + sesion.token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let mensaje = "No se pudo generar el archivo";
+      try {
+        const data = await res.json();
+        if (data && data.detail) mensaje = typeof data.detail === "string" ? data.detail : mensaje;
+      } catch (_) {}
+      toast(mensaje, true);
+      return;
+    }
+    const blob = await res.blob();
+    if (!blob || blob.size === 0) {
+      toast("El archivo generó vacío, intenta de nuevo", true);
+      return;
+    }
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nombreArchivo;
+    a.style.display = "none";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    }, 1500);
+  } catch (e) {
+    toast("No se pudo descargar el archivo", true);
+  } finally {
+    setTimeout(() => { _descargaEnCurso = false; }, 800);
+  }
+}
+
 /** Sube un archivo (FormData) a un endpoint protegido y devuelve el JSON de respuesta. */
 async function subirArchivo(path, campo, archivo) {
   const formData = new FormData();
@@ -2434,11 +2481,32 @@ document.getElementById("modal-sugerencia-pedido").addEventListener("click", (e)
   if (e.target.id === "modal-sugerencia-pedido") cerrarModalSugerencia();
 });
 
-document.getElementById("btn-exportar-sugerencia").addEventListener("click", () => {
+document.getElementById("btn-exportar-sugerencia").addEventListener("click", async () => {
   if (!proveedorSugerenciaActual) return;
-  descargarArchivo(
-    `/proveedores/${proveedorSugerenciaActual.id}/sugerencia-pedido/excel`,
-    `pedido_${proveedorSugerenciaActual.nombre.replace(/\s+/g, "_")}.xlsx`
+
+  // Toma las cantidades actuales del modal (las que el usuario ajustó),
+  // no solo la sugerencia automática. Así el PDF coincide con lo que se
+  // va a pedir al proveedor.
+  const items = [];
+  document.querySelectorAll("#tabla-sugerencia-pedido tbody tr").forEach((fila) => {
+    if (fila.classList.contains("fila-pendiente-quitar")) return;
+    const input = fila.querySelector(".input-cantidad-pedido");
+    if (!input) return;
+    const cantidad = parseFloat(input.value) || 0;
+    if (cantidad > 0) {
+      items.push({ producto_id: parseInt(input.dataset.productoId, 10), cantidad });
+    }
+  });
+  if (!items.length) {
+    toast("Indica al menos una cantidad mayor a 0 para exportar el pedido", true);
+    return;
+  }
+
+  const nombre = `pedido_${proveedorSugerenciaActual.nombre.replace(/\s+/g, "_")}.pdf`;
+  await descargarArchivoPost(
+    `/proveedores/${proveedorSugerenciaActual.id}/sugerencia-pedido/pdf`,
+    { items },
+    nombre
   );
 });
 

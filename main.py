@@ -598,49 +598,236 @@ def sugerencia_pedido(
     )
 
 
-@app.get("/api/proveedores/{proveedor_id}/sugerencia-pedido/excel")
-def sugerencia_pedido_excel(
+@app.post("/api/proveedores/{proveedor_id}/sugerencia-pedido/pdf")
+def sugerencia_pedido_pdf(
     proveedor_id: int,
+    pedido: schemas.PedidoCrear,
     db: Session = Depends(get_db),
     _usuario: models.Usuario = Depends(auth.requiere_permiso("proveedores.sugerencia")),
 ):
-    """Exporta la sugerencia de pedido a Excel, lista para mandarle al proveedor o imprimirla."""
-    from openpyxl import Workbook
+    """
+    PDF del pedido listo para mandar al proveedor o imprimir.
+
+    Usa las cantidades que el usuario ajustó en el modal (no solo la
+    sugerencia automática). Solo incluye filas con cantidad > 0.
+    Columnas orientadas al proveedor: producto, cantidad, costo, subtotal
+    y motivo. Sin stock interno (mínimo/máximo/actual/sugerido).
+    """
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+    )
+    from reportlab.pdfgen import canvas as pdf_canvas
 
     proveedor = db.query(models.Proveedor).get(proveedor_id)
     if not proveedor:
         raise HTTPException(404, "Proveedor no encontrado")
 
-    items = _calcular_sugerencia_pedido(db, proveedor)
+    items_validos = [it for it in pedido.items if it.cantidad and it.cantidad > 0]
+    if not items_validos:
+        raise HTTPException(400, "Selecciona al menos un producto con cantidad mayor a 0")
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Sugerencia de pedido"
-    ws.append([f"Sugerencia de pedido — {proveedor.nombre}"])
-    ws.append([f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M')}"])
-    ws.append([])
-    ws.append(["Código", "Producto", "Stock actual", "Stock mínimo", "Stock máximo", "Sugerido a pedir", "Motivo"])
-    from openpyxl.styles import Font, PatternFill
-    fila_encabezado = ws[4]
-    for celda in fila_encabezado:
-        celda.font = Font(color="FFFFFF", bold=True)
-        celda.fill = PatternFill(start_color="2563EB", end_color="2563EB", fill_type="solid")
-    for it in items:
-        ws.append([
-            it.codigo_barras, it.nombre, it.stock, it.stock_minimo,
-            it.stock_maximo, it.sugerido, it.motivo,
+    # Motivo sugerido por producto (si el ítem aún está en la sugerencia).
+    sugeridos = {
+        it.producto_id: it
+        for it in _calcular_sugerencia_pedido(db, proveedor)
+    }
+
+    filas_datos = []
+    total_gasto = 0.0
+    for it in items_validos:
+        producto = db.query(models.Producto).filter(
+            models.Producto.id == it.producto_id,
+            models.Producto.proveedor_id == proveedor_id,
+        ).first()
+        if not producto:
+            raise HTTPException(404, "Uno de los productos ya no pertenece a este proveedor")
+
+        if producto.unidad_venta == "pieza" and it.cantidad != int(it.cantidad):
+            raise HTTPException(
+                400,
+                f"'{producto.nombre}' se vende por pieza, la cantidad debe ser un número entero",
+            )
+
+        costo = producto.costo or 0
+        subtotal = round(costo * it.cantidad, 2)
+        total_gasto += subtotal
+        unidad = "pza" if producto.unidad_venta == "pieza" else "kg"
+        motivo = ""
+        sug = sugeridos.get(producto.id)
+        if sug:
+            motivo = sug.motivo or ""
+
+        # Cantidad legible: enteros sin decimales inútiles; kg con hasta 3.
+        if producto.unidad_venta == "pieza":
+            cant_txt = f"{int(it.cantidad)} {unidad}"
+        else:
+            cant_txt = f"{round(it.cantidad, 3):g} {unidad}"
+
+        filas_datos.append({
+            "nombre": producto.nombre,
+            "cantidad": cant_txt,
+            "costo": costo,
+            "subtotal": subtotal,
+            "motivo": motivo,
+        })
+
+    try:
+        nombre_tienda = _nombre_tienda(db)
+        AZUL = colors.HexColor("#0e9d6e")  # verde de la caja / identidad POS
+        AZUL_OSCURO = colors.HexColor("#0a7c56")
+        GRIS_TEXTO = colors.HexColor("#374151")
+        GRIS_CLARO = colors.HexColor("#F3F5F9")
+        LINEA = colors.HexColor("#E2E6EE")
+
+        estilos = getSampleStyleSheet()
+        titulo_style = ParagraphStyle(
+            "TituloPedido", parent=estilos["Title"], fontSize=18,
+            textColor=AZUL_OSCURO, spaceAfter=2, alignment=TA_LEFT,
+        )
+        subtitulo_style = ParagraphStyle(
+            "SubPedido", parent=estilos["Normal"], fontSize=10,
+            textColor=GRIS_TEXTO, spaceAfter=2, leading=13,
+        )
+        meta_style = ParagraphStyle(
+            "MetaPedido", parent=estilos["Normal"], fontSize=9,
+            textColor=GRIS_TEXTO, leading=12,
+        )
+        celda_style = ParagraphStyle(
+            "CeldaPedido", parent=estilos["Normal"], fontSize=9, leading=11,
+        )
+        celda_r_style = ParagraphStyle(
+            "CeldaPedidoR", parent=celda_style, alignment=TA_RIGHT,
+        )
+        encabezado_style = ParagraphStyle(
+            "EncPedido", parent=estilos["Normal"], fontSize=9,
+            textColor=colors.white, leading=11, fontName="Helvetica-Bold",
+        )
+        encabezado_r_style = ParagraphStyle(
+            "EncPedidoR", parent=encabezado_style, alignment=TA_RIGHT,
+        )
+        total_style = ParagraphStyle(
+            "TotalPedido", parent=estilos["Normal"], fontSize=11,
+            textColor=AZUL_OSCURO, fontName="Helvetica-Bold", alignment=TA_RIGHT,
+        )
+        pie_style = ParagraphStyle(
+            "PiePedido", parent=estilos["Normal"], fontSize=8,
+            textColor=colors.grey, alignment=TA_CENTER,
+        )
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            leftMargin=1.6 * cm,
+            rightMargin=1.6 * cm,
+            topMargin=1.6 * cm,
+            bottomMargin=1.8 * cm,
+        )
+        elementos = []
+
+        elementos.append(Paragraph(_escapar_pdf(nombre_tienda), titulo_style))
+        elementos.append(Paragraph(
+            f"Pedido a proveedor — {_escapar_pdf(proveedor.nombre)}",
+            subtitulo_style,
+        ))
+
+        meta_lineas = [f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}"]
+        if proveedor.contacto:
+            meta_lineas.append(f"Contacto: {_escapar_pdf(proveedor.contacto)}")
+        if proveedor.telefono:
+            meta_lineas.append(f"Teléfono: {_escapar_pdf(proveedor.telefono)}")
+        meta_lineas.append(f"Productos: {len(filas_datos)}")
+        elementos.append(Paragraph(" · ".join(meta_lineas), meta_style))
+        elementos.append(Spacer(1, 0.45 * cm))
+
+        # Tabla: Producto | Cantidad | Costo c/u | Subtotal | Motivo
+        encabezados = [
+            Paragraph("Producto", encabezado_style),
+            Paragraph("Cantidad a pedir", encabezado_r_style),
+            Paragraph("Costo c/u", encabezado_r_style),
+            Paragraph("Subtotal", encabezado_r_style),
+            Paragraph("Motivo", encabezado_style),
+        ]
+        filas = [encabezados]
+        for f in filas_datos:
+            filas.append([
+                Paragraph(_escapar_pdf(f["nombre"]), celda_style),
+                Paragraph(_escapar_pdf(f["cantidad"]), celda_r_style),
+                Paragraph(_moneda(f["costo"]), celda_r_style),
+                Paragraph(_moneda(f["subtotal"]), celda_r_style),
+                Paragraph(_escapar_pdf(f["motivo"] or "—"), celda_style),
+            ])
+
+        # Fila de total
+        filas.append([
+            Paragraph("", celda_style),
+            Paragraph("", celda_style),
+            Paragraph("Gasto total estimado", total_style),
+            Paragraph(_moneda(total_gasto), total_style),
+            Paragraph("", celda_style),
         ])
-    _autoajustar_columnas(ws)
 
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-    nombre_archivo = f"pedido_{proveedor.nombre.replace(' ', '_')}.xlsx"
-    return StreamingResponse(
-        buffer,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={nombre_archivo}"},
-    )
+        anchos = [6.8 * cm, 3.0 * cm, 2.4 * cm, 2.6 * cm, 3.0 * cm]
+        tabla = Table(filas, colWidths=anchos, repeatRows=1)
+        estilo_tabla = [
+            ("BACKGROUND", (0, 0), (-1, 0), AZUL),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("BACKGROUND", (0, 1), (-1, -2), colors.white),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, GRIS_CLARO]),
+            ("GRID", (0, 0), (-1, -2), 0.4, LINEA),
+            ("BOX", (0, 0), (-1, -2), 0.8, AZUL),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            # Fila total
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e3f7ef")),
+            ("LINEABOVE", (0, -1), (-1, -1), 1.2, AZUL),
+            ("SPAN", (0, -1), (1, -1)),
+        ]
+        tabla.setStyle(TableStyle(estilo_tabla))
+        elementos.append(tabla)
+        elementos.append(Spacer(1, 0.5 * cm))
+        elementos.append(Paragraph(
+            "Documento generado desde el punto de venta. Las cantidades corresponden "
+            "a lo que se desea pedir en esta visita.",
+            pie_style,
+        ))
+
+        def pie_pagina(canv: pdf_canvas.Canvas, doc_):
+            canv.saveState()
+            canv.setFont("Helvetica", 8)
+            canv.setFillColor(colors.grey)
+            canv.drawCentredString(
+                letter[0] / 2,
+                1.0 * cm,
+                f"{nombre_tienda} · Pedido a {proveedor.nombre} · Página {doc_.page}",
+            )
+            canv.restoreState()
+
+        doc.build(elementos, onFirstPage=pie_pagina, onLaterPages=pie_pagina)
+        buffer.seek(0)
+        nombre_seguro = "".join(
+            c if c.isalnum() or c in "-_" else "_"
+            for c in proveedor.nombre.replace(" ", "_")
+        )
+        nombre_archivo = f"pedido_{nombre_seguro}.pdf"
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={nombre_archivo}"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"No se pudo generar el PDF: {e}")
 
 
 @app.post("/api/proveedores/{proveedor_id}/hacer-pedido", response_model=schemas.PedidoConfirmado)
