@@ -424,8 +424,67 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === "usuarios") cargarUsuarios();
     if (btn.dataset.tab === "permisos") cargarPermisos();
     if (btn.dataset.tab === "configuracion") cargarConfiguracionAdmin();
+
+    // Si llegó un código desde el celular mientras estabas en otra
+    // pestaña (ej. Catálogo), al entrar a Vender/Agregar producto/
+    // Inventario se aplica solo, sin tener que volver a escanear.
+    aplicarCodigoRemotoSiCorresponde();
   });
 });
+
+// ---------------------------------------------------------
+// Escaneo remoto: recibe en la computadora los códigos que se escanean
+// desde la página /escanear del celular (misma cuenta logueada en
+// ambos). Se revisa cada 1.2s mientras la sesión esté activa; en cuanto
+// llega uno, se aplica en el lugar correcto según dónde estés parado:
+// Vender -> se agrega al carrito; Agregar producto -> llena el código;
+// Agregar inventario -> busca el producto para el movimiento.
+// ---------------------------------------------------------
+let _codigoRemotoPendiente = null;
+
+async function revisarEscaneoRemoto() {
+  if (!sesion.token) return;
+  try {
+    const d = await api("/escaneo-remoto/pendiente");
+    if (d && d.codigo_barras) {
+      _codigoRemotoPendiente = d.codigo_barras;
+      aplicarCodigoRemotoSiCorresponde();
+    }
+  } catch (e) {
+    // Silencioso: si falla un poll no bloqueamos el resto del sistema.
+  }
+}
+
+function aplicarCodigoRemotoSiCorresponde() {
+  if (!_codigoRemotoPendiente) return;
+  const codigo = _codigoRemotoPendiente;
+  const tabActiva = document.querySelector(".tab-btn.active")?.dataset.tab;
+
+  if (tabActiva === "venta") {
+    _codigoRemotoPendiente = null;
+    agregarAlCarritoPorCodigo(codigo); // ya avisa con su propio toast/bip
+  } else if (tabActiva === "productos") {
+    _codigoRemotoPendiente = null;
+    document.getElementById("prod-codigo").value = codigo;
+    autocompletarDesdeEscaneo(codigo);
+    toast(`Código recibido desde el celular: ${codigo}`);
+  } else if (tabActiva === "inventario") {
+    _codigoRemotoPendiente = null;
+    document.getElementById("inv-codigo").value = codigo;
+    buscarProductoParaInventario(codigo);
+    toast(`Código recibido desde el celular: ${codigo}`);
+  } else {
+    // Estás en una pestaña donde el código no aplica (Catálogo, Reportes,
+    // etc.): se queda en espera y se usa solo en cuanto entres a Vender,
+    // Agregar producto o Agregar inventario.
+    toast(`Código escaneado desde el celular (${codigo}): ve a Vender, Agregar producto o Agregar inventario para usarlo`, true);
+  }
+}
+
+if (!window._intervalEscaneoRemoto) {
+  window._intervalEscaneoRemoto = setInterval(revisarEscaneoRemoto, 1200);
+}
+
 
 // ---------------------------------------------------------
 // Grupos desplegables del menú (Productos, Inventario, Proveedores, Gastos)

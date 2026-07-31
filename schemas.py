@@ -393,6 +393,17 @@ class OtroGastoOut(BaseModel):
         from_attributes = True
 
 
+# ---------- Escaneo remoto (celular -> computadora) ----------
+class EscaneoRemotoCrear(BaseModel):
+    codigo_barras: str = Field(min_length=1)
+
+
+class EscaneoRemotoOut(BaseModel):
+    # None cuando no hay ningún escaneo nuevo pendiente.
+    codigo_barras: Optional[str] = None
+    fecha: Optional[datetime] = None
+
+
 # ---------- Notificaciones en tiempo real (dashboard / campana) ----------
 class NotificacionOut(BaseModel):
     # Identifica la notificación de forma única; se usa para descartarla.

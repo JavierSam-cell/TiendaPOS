@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Escanear — POS</title>
+<link rel="stylesheet" href="/static/style.css?v=2">
+<script src="https://fastly.jsdelivr.net/npm/barcode-detector@3/dist/iife/polyfill.min.js"></script>
+<style>
+  html, body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--ink);
+    font-family: var(--font-ui);
+    color: var(--text);
+  }
+  .esc-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  .esc-caja {
+    width: 100%;
+    max-width: 420px;
+    background: var(--paper);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-ink);
+    padding: 22px;
+    box-sizing: border-box;
+  }
+  .esc-marca {
+    text-align: center;
+    color: #fff;
+    margin-bottom: 18px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+  }
+  .esc-titulo {
+    text-align: center;
+    margin: 0 0 4px;
+    font-weight: 800;
+    font-size: 1.15rem;
+  }
+  .esc-sub {
+    text-align: center;
+    margin: 0 0 18px;
+    color: var(--text-mute);
+    font-size: 0.9rem;
+  }
+  .esc-field { margin-bottom: 12px; }
+  .esc-field label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-mute);
+    margin-bottom: 4px;
+  }
+  .esc-field input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line);
+    font-size: 1rem;
+    font-family: var(--font-ui);
+  }
+  .esc-btn {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 16px;
+    border-radius: var(--radius-md);
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1.05rem;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .esc-btn:active { background: var(--accent-dark); }
+  .esc-btn-secundario {
+    background: transparent;
+    color: var(--text-mute);
+    font-weight: 700;
+    margin-top: 10px;
+    padding: 10px;
+  }
+  .esc-error {
+    color: var(--danger);
+    font-size: 0.85rem;
+    text-align: center;
+    margin: 0 0 12px;
+    min-height: 1.1em;
+  }
+  .esc-usuario {
+    text-align: center;
+    color: var(--text-mute);
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+  }
+  .esc-usuario b { color: var(--text); }
+
+  /* Botón grande de escanear, pensado para dedo/pulgar en el celular */
+  #btn-esc-scan {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    aspect-ratio: 1 / 0.85;
+    box-sizing: border-box;
+    border: none;
+    border-radius: var(--radius-lg);
+    background: var(--accent);
+    color: #fff;
+    font-size: 1.15rem;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  #btn-esc-scan:active { background: var(--accent-dark); }
+  #btn-esc-scan.escaneando { background: var(--danger); }
+  #btn-esc-scan.escaneando:active { background: var(--danger-dark); }
+  #btn-esc-scan svg { width: 46px; height: 46px; }
+
+  #esc-video-wrap {
+    position: relative;
+    width: 100%;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: #000;
+    margin-bottom: 14px;
+    display: none;
+  }
+  #esc-video-wrap.mostrar { display: block; }
+  #esc-video-wrap video { width: 100% !important; display: block; }
+  #esc-video-wrap::after {
+    content: "";
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 78%; height: 30%;
+    border: 2px dashed rgba(255,255,255,0.85);
+    border-radius: 10px;
+    pointer-events: none;
+  }
+  .esc-linterna {
+    position: absolute;
+    bottom: 10px; right: 10px;
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.9);
+    font-size: 1.2rem;
+    cursor: pointer;
+  }
+  .esc-linterna.activa { background: var(--warning); }
+
+  .esc-ultimo {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    background: var(--accent-soft);
+    color: var(--accent-darker);
+    font-weight: 700;
+    text-align: center;
+    display: none;
+  }
+  .esc-ultimo.mostrar { display: block; }
+  .esc-ultimo small { display: block; font-weight: 500; opacity: 0.85; margin-top: 2px; }
+
+  .esc-manual {
+    margin-top: 18px;
+    border-top: 1px dashed var(--line);
+    padding-top: 14px;
+  }
+  .esc-manual-fila { display: flex; gap: 8px; }
+  .esc-manual-fila input {
+    flex: 1;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line);
+    font-size: 1rem;
+  }
+  .esc-manual-fila button {
+    padding: 0 16px;
+    border-radius: var(--radius-md);
+    border: none;
+    background: var(--ink);
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  #toast-esc {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--ink);
+    color: #fff;
+    padding: 12px 18px;
+    border-radius: var(--radius-md);
+    font-weight: 700;
+    font-size: 0.9rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    max-width: 90vw;
+    text-align: center;
+    z-index: 500;
+  }
+  #toast-esc.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast-esc.error { background: var(--danger); }
+</style>
+</head>
+<body>
+
+<div class="esc-shell">
+  <div class="esc-marca">📷 POS — Escáner remoto</div>
+
+  <!-- ===== LOGIN ===== -->
+  <div class="esc-caja" id="esc-pantalla-login">
+    <p class="esc-titulo">Inicia sesión</p>
+    <p class="esc-sub">Usa la misma cuenta con la que trabajas en la computadora.</p>
+    <p class="esc-error" id="esc-login-error"></p>
+    <form id="esc-form-login">
+      <div class="esc-field">
+        <label for="esc-usuario">Usuario</label>
+        <input id="esc-usuario" autocomplete="username" required autocapitalize="none">
+      </div>
+      <div class="esc-field">
+        <label for="esc-password">Contraseña</label>
+        <input id="esc-password" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="esc-btn">Entrar</button>
+    </form>
+  </div>
+
+  <!-- ===== ESCÁNER ===== -->
+  <div class="esc-caja" id="esc-pantalla-scan" style="display:none">
+    <p class="esc-usuario">Conectado como <b id="esc-nombre-usuario"></b></p>
+
+    <div id="esc-video-wrap"><div id="esc-video-contenedor"></div></div>
+
+    <button id="btn-esc-scan" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M3 17v2a2 2 0 0 0 2 2h2M21 7V5a2 2 0 0 0-2-2h-2M21 17v2a2 2 0 0 1-2 2h-2M7 12h10"/></svg>
+      <span id="btn-esc-scan-txt">Escanear código de barras</span>
+    </button>
+
+    <div class="esc-ultimo" id="esc-ultimo">
+      Enviado a la computadora ✓
+      <small id="esc-ultimo-codigo"></small>
+    </div>
+
+    <div class="esc-manual">
+      <label for="esc-manual-input" style="display:block;font-size:0.82rem;font-weight:700;color:var(--text-mute);margin-bottom:6px;">
+        ¿No lee? Escríbelo a mano
+      </label>
+      <div class="esc-manual-fila">
+        <input id="esc-manual-input" inputmode="numeric" placeholder="Código de barras">
+        <button id="esc-manual-btn" type="button">Enviar</button>
+      </div>
+    </div>
+
+    <button class="esc-btn esc-btn-secundario" id="esc-btn-salir" type="button">Cerrar sesión</button>
+  </div>
+</div>
+
+<div id="toast-esc"></div>
+
+<script src="/static/escanear.js?v=1"></script>
+</body>
+</html>

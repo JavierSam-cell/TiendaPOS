@@ -251,6 +251,30 @@ class CorteCaja(Base):
         return self.usuario.nombre_completo or self.usuario.username
 
 
+class EscaneoRemoto(Base):
+    """
+    Puente entre el celular (que escanea) y la computadora (donde se está
+    trabajando en el POS). El celular hace login con una cuenta del
+    sistema y manda aquí el código que acaba de leer; la computadora, con
+    la sesión de esa MISMA cuenta abierta, pregunta cada cierto tiempo
+    "¿hay algo nuevo para mí?" y lo consume.
+
+    No hace falta emparejar dispositivos: el "amarre" entre celular y
+    compu es, sencillamente, que ambos iniciaron sesión con el mismo
+    usuario (por eso conviene una cuenta de cajero dedicada para esto si
+    varias personas van a usar el celular a la vez).
+    """
+    __tablename__ = "escaneos_remotos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    codigo_barras = Column(String, nullable=False)
+    fecha = Column(DateTime, default=datetime.now)
+    # Se marca True en cuanto la computadora lo recoge, para no volver a
+    # entregarlo ni acumular basura de escaneos viejos sin usar.
+    consumido = Column(Boolean, default=False)
+
+
 class OtroGasto(Base):
     """
     Gastos del negocio que no son compra de mercancía: renta, luz, agua,

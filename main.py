@@ -133,6 +133,60 @@ def logout(authorization: str = None, db: Session = Depends(get_db),
 
 
 # ============================================================
+#  ESCANEO REMOTO (celular -> computadora)
+# ============================================================
+# El celular escanea y llama a este POST; la computadora, logueada con la
+# MISMA cuenta, llama al GET cada 1-2 segundos mientras el POS está
+# abierto y recoge el código apenas llega, sin que nadie tenga que tocar
+# nada del lado de la compu.
+
+@app.post("/api/escaneo-remoto")
+def recibir_escaneo_remoto(
+    datos: schemas.EscaneoRemotoCrear,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(auth.obtener_usuario_actual),
+):
+    codigo = datos.codigo_barras.strip()
+    if not codigo:
+        raise HTTPException(400, "Código vacío")
+
+    # Se descartan los escaneos previos sin recoger de este mismo usuario:
+    # si escaneaste dos códigos seguidos sin que la compu alcanzara a leer
+    # el primero, lo que importa es el más reciente, no ir en fila.
+    db.query(models.EscaneoRemoto).filter(
+        models.EscaneoRemoto.usuario_id == usuario.id,
+        models.EscaneoRemoto.consumido == False,  # noqa: E712
+    ).delete()
+
+    nuevo = models.EscaneoRemoto(usuario_id=usuario.id, codigo_barras=codigo)
+    db.add(nuevo)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/escaneo-remoto/pendiente", response_model=schemas.EscaneoRemotoOut)
+def recoger_escaneo_remoto(
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(auth.obtener_usuario_actual),
+):
+    pendiente = (
+        db.query(models.EscaneoRemoto)
+        .filter(
+            models.EscaneoRemoto.usuario_id == usuario.id,
+            models.EscaneoRemoto.consumido == False,  # noqa: E712
+        )
+        .order_by(models.EscaneoRemoto.fecha.desc())
+        .first()
+    )
+    if not pendiente:
+        return schemas.EscaneoRemotoOut()
+
+    pendiente.consumido = True
+    db.commit()
+    return schemas.EscaneoRemotoOut(codigo_barras=pendiente.codigo_barras, fecha=pendiente.fecha)
+
+
+# ============================================================
 #  USUARIOS (solo admin)
 # ============================================================
 
@@ -2928,3 +2982,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 def index():
     return FileResponse("static/index.html")
+
+
+@app.get("/escanear")
+def pagina_escanear():
+    return FileResponse("static/escanear.html")
