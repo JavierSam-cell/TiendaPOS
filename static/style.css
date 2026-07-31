@@ -1197,6 +1197,20 @@ tbody tr:hover { background: #fafbfd; }
   cursor: pointer;
 }
 .lector-linterna.activa { background: var(--warning); }
+.lector-zoom {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.9);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.lector-zoom.activa { background: var(--warning); }
 .modal-box {
   background: var(--paper);
   border-radius: var(--radius-lg);

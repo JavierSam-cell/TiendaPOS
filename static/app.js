@@ -445,9 +445,22 @@ document.querySelectorAll(".nav-grupo-toggle").forEach((toggle) => {
 // El overlay (.lector-overlay) se muestra fijo y centrado en la pantalla
 // -ya no queda "hasta abajo" del contenido de la página-.
 //
-// Para la lectura en sí se usa BarcodeDetector: lee sobre el cuadro
-// completo de la cámara (no solo un recuadro chico), por lo que detecta
-// el código casi al instante, sin necesidad de centrarlo con precisión.
+// Para la lectura en sí se usa BarcodeDetector, pero SOLO sobre el
+// recuadro guía que se ve en pantalla (no sobre el cuadro completo de la
+// cámara). Analizar la imagen completa es justo lo que hacía que antes
+// costara trabajo leer:
+//   1) Es más lento: mientras más grande la imagen, más tarda el motor
+//      (sobre todo el polyfill en WASM que usa iPhone/Safari) en
+//      encontrar y decodificar el código.
+//   2) Es menos preciso: un código de barras chico dentro de una foto
+//      grande queda muy poco nítido para el decodificador, y si hay
+//      varios códigos a la vista (etiquetas del anaquel, otro producto)
+//      es más fácil que agarre el que no es.
+// Al recortar solo el recuadro guía y usarlo "acercado" (zoom digital),
+// el mismo código ocupa muchos más píxeles y el análisis es sobre una
+// imagen mucho más chica: lee más rápido y más limpio. Esto es lo mismo
+// que hacen las librerías rápidas de escaneo (como la que se usaba en
+// WordPress): no leen la foto completa, leen solo el recuadro.
 // El script "barcode-detector" cargado en index.html garantiza que esta
 // función exista igual en Android, iPhone y cualquier navegador (ver
 // comentario más abajo).
@@ -455,6 +468,12 @@ const FORMATOS_CODIGO_BARRAS = [
   "ean_13", "ean_8", "upc_a", "upc_e",
   "code_128", "code_39", "code_93", "codabar", "itf", "qr_code",
 ];
+
+// Debe coincidir con el tamaño del recuadro guía dibujado en CSS
+// (.lector-video-wrap::after: width 70%, height 32%). Si cambias uno,
+// cambia el otro para que el recorte sea justo lo que el usuario ve.
+const RECUADRO_GUIA_ANCHO = 0.70;
+const RECUADRO_GUIA_ALTO = 0.32;
 
 // El script "barcode-detector" (polyfill) cargado en index.html garantiza
 // que window.BarcodeDetector exista en TODOS los navegadores: si el
@@ -499,6 +518,12 @@ function iniciarLectorNativo(el, onResultado) {
   video.muted = true;
   el.appendChild(video);
 
+  // Canvas oculto: aquí se dibuja, en cada cuadro, SOLO el recorte que
+  // corresponde al recuadro guía (ver RECUADRO_GUIA_ANCHO/ALTO), y es
+  // esa imagen chica -no el video completo- la que se manda a decodificar.
+  const canvasRecorte = document.createElement("canvas");
+  const ctxRecorte = canvasRecorte.getContext("2d", { willReadFrequently: true });
+
   let detenido = false;
   let stream = null;
   const detector = new BarcodeDetector({ formats: FORMATOS_CODIGO_BARRAS });
@@ -512,8 +537,13 @@ function iniciarLectorNativo(el, onResultado) {
     .getUserMedia({
       video: {
         facingMode: { ideal: "environment" },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        // Pedimos la mayor resolución posible: como solo se procesa el
+        // recorte del recuadro guía (una fracción de la imagen), aquí sí
+        // conviene partir de un video bien detallado -el recorte sale
+        // más nítido y el código se lee mejor, sin pagar el costo en
+        // velocidad porque nunca se decodifica el cuadro completo.
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
       },
     })
     .then((s) => {
@@ -521,10 +551,11 @@ function iniciarLectorNativo(el, onResultado) {
       video.srcObject = s;
       video.play();
 
-      // Enfoque continuo: sin esto, muchos Android dejan la cámara con
-      // foco fijo y el código de barras nunca queda nítido de cerca.
       const [pista] = s.getVideoTracks();
       const capacidades = pista.getCapabilities ? pista.getCapabilities() : {};
+
+      // Enfoque continuo: sin esto, muchos Android dejan la cámara con
+      // foco fijo y el código de barras nunca queda nítido de cerca.
       if (capacidades.focusMode && capacidades.focusMode.includes("continuous")) {
         pista.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
       }
@@ -532,17 +563,54 @@ function iniciarLectorNativo(el, onResultado) {
       if (capacidades.torch) {
         mostrarBotonLinterna(el, pista);
       }
+      // Zoom óptico/digital del propio celular, si lo soporta: acerca
+      // aún más el recuadro guía al código, mucho más nítido que hacer
+      // zoom por software con el canvas.
+      if (capacidades.zoom && capacidades.zoom.max > capacidades.zoom.min) {
+        mostrarBotonZoom(el, pista, capacidades.zoom);
+      }
 
       // Evita falsos positivos: exige el mismo código 2 veces seguidas
       // antes de darlo por bueno (una lectura suelta, por movimiento o
-      // por agarrar de refilón otro código, no se cuela).
+      // por agarrar de refilón otro código, no se cuela). Como ahora la
+      // detección es mucho más rápida (imagen chica), esto sigue siendo
+      // casi instantáneo para el usuario.
       let ultimoCandidato = null;
       let vecesSeguidas = 0;
 
       const detectarCuadro = () => {
         if (detenido) return;
+        if (!video.videoWidth) {
+          // El video aún no tiene dimensiones (primer(os) cuadro(s)).
+          requestAnimationFrame(detectarCuadro);
+          return;
+        }
+
+        // Recorta exactamente el área del recuadro guía, en coordenadas
+        // reales del video (no de la pantalla), y la agranda al tamaño
+        // del canvas: es el efecto "zoom" que hace que el código se lea
+        // mucho más rápido y sin errores que analizando el video entero.
+        const anchoRecorte = video.videoWidth * RECUADRO_GUIA_ANCHO;
+        const altoRecorte = video.videoHeight * RECUADRO_GUIA_ALTO;
+        const xRecorte = (video.videoWidth - anchoRecorte) / 2;
+        const yRecorte = (video.videoHeight - altoRecorte) / 2;
+
+        // Si el recorte sale chico (cámara con poca resolución real),
+        // lo agrandamos más al dibujarlo para darle al decodificador
+        // suficientes píxeles por barra. Si ya sale grande, no hace
+        // falta agrandar más (sería trabajo extra sin beneficio).
+        const escala = Math.min(3, Math.max(1, 900 / anchoRecorte));
+        canvasRecorte.width = Math.round(anchoRecorte * escala);
+        canvasRecorte.height = Math.round(altoRecorte * escala);
+        ctxRecorte.imageSmoothingEnabled = escala <= 1; // nítido al agrandar
+        ctxRecorte.drawImage(
+          video,
+          xRecorte, yRecorte, anchoRecorte, altoRecorte,
+          0, 0, canvasRecorte.width, canvasRecorte.height
+        );
+
         detector
-          .detect(video)
+          .detect(canvasRecorte)
           .then((codigos) => {
             if (detenido) return;
 
@@ -555,11 +623,11 @@ function iniciarLectorNativo(el, onResultado) {
               return;
             }
 
-            // Si hay varios códigos a la vista (otro producto de refilón,
-            // etiqueta del anaquel, etc.), prioriza el más cercano al
-            // centro de la cámara: normalmente es al que le apuntas.
-            const cx = video.videoWidth / 2;
-            const cy = video.videoHeight / 2;
+            // Ya casi nunca hay más de un código dentro del recuadro
+            // recortado, pero por si acaso, prioriza el más cercano al
+            // centro (normalmente es al que le apuntas).
+            const cx = canvasRecorte.width / 2;
+            const cy = canvasRecorte.height / 2;
             validos.sort(
               (a, b) => distanciaAlCentro(a, cx, cy) - distanciaAlCentro(b, cx, cy)
             );
@@ -591,7 +659,7 @@ function iniciarLectorNativo(el, onResultado) {
 }
 
 // Distancia (al cuadrado, no hace falta la raíz) del centro de un código
-// detectado al centro del cuadro de la cámara. Si el navegador no da
+// detectado al centro de la imagen analizada. Si el navegador no da
 // boundingBox, se trata como si estuviera en el centro (no penaliza).
 function distanciaAlCentro(codigo, cx, cy) {
   const caja = codigo.boundingBox;
@@ -631,6 +699,29 @@ function mostrarBotonLinterna(el, pista) {
     encendida = !encendida;
     pista.applyConstraints({ advanced: [{ torch: encendida }] }).catch(() => {});
     btn.classList.toggle("activa", encendida);
+  });
+  el.appendChild(btn);
+}
+
+// Botón de zoom dentro del recuadro de la cámara (solo si el equipo lo
+// soporta). Acercar el código con el zoom del propio celular ayuda mucho
+// más que solo confiar en el recorte por software, sobre todo con
+// códigos chicos o de lejos.
+function mostrarBotonZoom(el, pista, zoomCap) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "lector-zoom";
+  btn.textContent = "🔍";
+  btn.setAttribute("aria-label", "Acercar/alejar zoom");
+  // Nivel de acercamiento moderado: suficiente para códigos chicos, sin
+  // pasarse al punto de que cueste mantenerlo encuadrado con la mano.
+  const nivelAcercado = Math.min(zoomCap.max, Math.max(zoomCap.min * 1, 2));
+  let acercado = false;
+  btn.addEventListener("click", () => {
+    acercado = !acercado;
+    const valor = acercado ? nivelAcercado : zoomCap.min;
+    pista.applyConstraints({ advanced: [{ zoom: valor }] }).catch(() => {});
+    btn.classList.toggle("activa", acercado);
   });
   el.appendChild(btn);
 }
