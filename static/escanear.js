@@ -145,11 +145,22 @@ const FORMATOS_CODIGO_BARRAS = [
   "ean_13", "ean_8", "upc_a", "upc_e",
   "code_128", "code_39", "code_93", "codabar", "itf", "qr_code",
 ];
-const RECUADRO_GUIA_ANCHO = 0.78;
-const RECUADRO_GUIA_ALTO = 0.30;
+// Recuadro guía más ancho y alto: acepta códigos grandes, chicos, alargados
+// o ligeramente inclinados (como los que se ven curveados en botellas).
+const RECUADRO_GUIA_ANCHO = 0.88;
+const RECUADRO_GUIA_ALTO = 0.4;
+// Umbral mínimo de confirmaciones antes de aceptar un código como válido.
+const CONFIRMACIONES_REQUERIDAS = 2;
+// Si se vuelve a leer el MISMO código antes de este tiempo, se ignora
+// (para no duplicar por seguir viéndolo en cuadro), pero la cámara
+// sigue activa todo el tiempo: no hay que volver a tocar el botón.
+const COOLDOWN_MISMO_CODIGO_MS = 1400;
 
 let _stream = null;
 let _detenido = true;
+let _pistaVideo = null;
+let _ultimoCodigoEnviado = null;
+let _ultimoEnvioTs = 0;
 
 function checksumEanUpcValido(codigo) {
   if (!/^\d{8}$|^\d{12}$|^\d{13}$/.test(codigo)) return true;
@@ -178,12 +189,51 @@ function detenerEscaneoSiActivo() {
     _stream.getTracks().forEach((t) => t.stop());
     _stream = null;
   }
+  _pistaVideo = null;
+  _ultimoCodigoEnviado = null;
   document.getElementById("esc-video-wrap").classList.remove("mostrar");
   document.getElementById("esc-video-contenedor").innerHTML = "";
   const btn = document.getElementById("btn-esc-scan");
   btn.classList.remove("escaneando");
   document.getElementById("btn-esc-scan-txt").textContent = "Escanear → enviar a la PC";
-  document.querySelectorAll(".esc-linterna").forEach((b) => b.remove());
+  document.querySelectorAll(".esc-linterna, .esc-zoom-controles").forEach((b) => b.remove());
+}
+
+/** Destello verde breve para confirmar lectura sin detener la cámara. */
+function destellarLecturaOk() {
+  const wrap = document.getElementById("esc-video-wrap");
+  wrap.classList.add("esc-lectura-ok");
+  setTimeout(() => wrap.classList.remove("esc-lectura-ok"), 220);
+}
+
+/** Botones +/- de zoom óptico/digital de la cámara, si el dispositivo lo soporta. */
+function agregarControlesZoom(pista, capacidades, wrap) {
+  if (!capacidades.zoom) return;
+  const min = capacidades.zoom.min ?? 1;
+  const max = capacidades.zoom.max ?? 1;
+  if (max <= min) return;
+  const paso = Math.max(capacidades.zoom.step || 0.1, (max - min) / 20);
+  let actual = pista.getSettings ? (pista.getSettings().zoom || min) : min;
+
+  const cont = document.createElement("div");
+  cont.className = "esc-zoom-controles";
+  const btnMenos = document.createElement("button");
+  btnMenos.type = "button";
+  btnMenos.textContent = "－";
+  const btnMas = document.createElement("button");
+  btnMas.type = "button";
+  btnMas.textContent = "＋";
+
+  const aplicar = (nuevo) => {
+    actual = Math.min(max, Math.max(min, nuevo));
+    pista.applyConstraints({ advanced: [{ zoom: actual }] }).catch(() => {});
+  };
+  btnMenos.addEventListener("click", () => aplicar(actual - paso));
+  btnMas.addEventListener("click", () => aplicar(actual + paso));
+
+  cont.appendChild(btnMenos);
+  cont.appendChild(btnMas);
+  wrap.appendChild(cont);
 }
 
 function iniciarEscaneo() {
@@ -194,7 +244,7 @@ function iniciarEscaneo() {
 
   const btn = document.getElementById("btn-esc-scan");
   btn.classList.add("escaneando");
-  document.getElementById("btn-esc-scan-txt").textContent = "Cancelar";
+  document.getElementById("btn-esc-scan-txt").textContent = "Detener escaneo";
 
   const video = document.createElement("video");
   video.setAttribute("playsinline", "");
@@ -202,18 +252,28 @@ function iniciarEscaneo() {
   video.muted = true;
   contenedor.appendChild(video);
 
-  const canvasRecorte = document.createElement("canvas");
-  const ctxRecorte = canvasRecorte.getContext("2d", { willReadFrequently: true });
+  // Dos canvases: uno para el recuadro guía normal, otro para un acercamiento
+  // digital extra centrado, que es lo que permite leer códigos pequeños,
+  // borrosos o impresos sobre superficies curvas (como una botella).
+  const canvasNormal = document.createElement("canvas");
+  const ctxNormal = canvasNormal.getContext("2d", { willReadFrequently: true });
+  const canvasZoom = document.createElement("canvas");
+  const ctxZoom = canvasZoom.getContext("2d", { willReadFrequently: true });
   const detector = new BarcodeDetector({ formats: FORMATOS_CODIGO_BARRAS });
 
   _detenido = false;
+  _ultimoCodigoEnviado = null;
+  _ultimoEnvioTs = 0;
 
   navigator.mediaDevices
     .getUserMedia({
       video: {
         facingMode: { ideal: "environment" },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
+        // Pedimos la mayor resolución posible: más píxeles reales sobre el
+        // código de barras = mejor lectura de códigos chicos al hacer zoom
+        // digital. El navegador ajusta al máximo que soporte la cámara.
+        width: { ideal: 3840 },
+        height: { ideal: 2160 },
       },
     })
     .then((s) => {
@@ -222,6 +282,7 @@ function iniciarEscaneo() {
       video.play();
 
       const [pista] = s.getVideoTracks();
+      _pistaVideo = pista;
       const capacidades = pista.getCapabilities ? pista.getCapabilities() : {};
       if (capacidades.focusMode && capacidades.focusMode.includes("continuous")) {
         pista.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
@@ -239,9 +300,62 @@ function iniciarEscaneo() {
         });
         wrap.appendChild(btnLinterna);
       }
+      agregarControlesZoom(pista, capacidades, wrap);
 
       let ultimoCandidato = null;
       let vecesSeguidas = 0;
+      let numCuadro = 0;
+
+      const prepararRecorte = (canvas, ctx, xRel, yRel, wRel, hRel, anchoObjetivo, escalaMax, filtro) => {
+        const anchoRecorte = video.videoWidth * wRel;
+        const altoRecorte = video.videoHeight * hRel;
+        const xRecorte = video.videoWidth * xRel;
+        const yRecorte = video.videoHeight * yRel;
+        const escala = Math.min(escalaMax, Math.max(1, anchoObjetivo / anchoRecorte));
+        canvas.width = Math.round(anchoRecorte * escala);
+        canvas.height = Math.round(altoRecorte * escala);
+        ctx.imageSmoothingEnabled = escala <= 1;
+        ctx.filter = filtro || "none";
+        ctx.drawImage(
+          video,
+          xRecorte, yRecorte, anchoRecorte, altoRecorte,
+          0, 0, canvas.width, canvas.height
+        );
+        ctx.filter = "none";
+        return canvas;
+      };
+
+      const procesarCandidatos = (codigos) => {
+        const validos = codigos.filter((c) => checksumEanUpcValido(c.rawValue));
+        if (validos.length === 0) return null;
+        validos.sort((a, b) => (b.boundingBox?.width || 0) - (a.boundingBox?.width || 0));
+        return validos[0].rawValue;
+      };
+
+      const confirmarLectura = (valor) => {
+        if (valor === ultimoCandidato) {
+          vecesSeguidas++;
+        } else {
+          ultimoCandidato = valor;
+          vecesSeguidas = 1;
+        }
+        return vecesSeguidas >= CONFIRMACIONES_REQUERIDAS;
+      };
+
+      const aceptarCodigo = (codigo) => {
+        ultimoCandidato = null;
+        vecesSeguidas = 0;
+        const ahora = Date.now();
+        const esRepetidoReciente =
+          codigo === _ultimoCodigoEnviado && ahora - _ultimoEnvioTs < COOLDOWN_MISMO_CODIGO_MS;
+        if (esRepetidoReciente) return; // seguimos viendo el mismo, no lo reenviamos
+        _ultimoCodigoEnviado = codigo;
+        _ultimoEnvioTs = ahora;
+        destellarLecturaOk();
+        // Solo manda el código a la PC (no abre venta local). La cámara
+        // SIGUE ACTIVA: no hay que tocar el botón para escanear el siguiente.
+        enviarCodigoAComputadora(codigo);
+      };
 
       const detectarCuadro = () => {
         if (_detenido) return;
@@ -249,54 +363,70 @@ function iniciarEscaneo() {
           requestAnimationFrame(detectarCuadro);
           return;
         }
+        numCuadro++;
 
-        const anchoRecorte = video.videoWidth * RECUADRO_GUIA_ANCHO;
-        const altoRecorte = video.videoHeight * RECUADRO_GUIA_ALTO;
-        const xRecorte = (video.videoWidth - anchoRecorte) / 2;
-        const yRecorte = (video.videoHeight - altoRecorte) / 2;
-        const escala = Math.min(3, Math.max(1, 900 / anchoRecorte));
-        canvasRecorte.width = Math.round(anchoRecorte * escala);
-        canvasRecorte.height = Math.round(altoRecorte * escala);
-        ctxRecorte.imageSmoothingEnabled = escala <= 1;
-        ctxRecorte.drawImage(
-          video,
-          xRecorte, yRecorte, anchoRecorte, altoRecorte,
-          0, 0, canvasRecorte.width, canvasRecorte.height
-        );
+        const xGuia = (1 - RECUADRO_GUIA_ANCHO) / 2;
+        const yGuia = (1 - RECUADRO_GUIA_ALTO) / 2;
+
+        // Pasada 1 (cada cuadro): recuadro guía completo, para códigos de
+        // tamaño normal o grande. Escala moderada.
+        prepararRecorte(canvasNormal, ctxNormal, xGuia, yGuia, RECUADRO_GUIA_ANCHO, RECUADRO_GUIA_ALTO, 1300, 4);
 
         detector
-          .detect(canvasRecorte)
+          .detect(canvasNormal)
           .then((codigos) => {
             if (_detenido) return;
-            const validos = codigos.filter((c) => checksumEanUpcValido(c.rawValue));
-            if (validos.length === 0) {
-              vecesSeguidas = 0;
-              requestAnimationFrame(detectarCuadro);
-              return;
-            }
-            const cx = canvasRecorte.width / 2;
-            const cy = canvasRecorte.height / 2;
-            validos.sort((a, b) => distanciaAlCentro(a, cx, cy) - distanciaAlCentro(b, cx, cy));
-            const elegido = validos[0];
-
-            if (elegido.rawValue === ultimoCandidato) {
-              vecesSeguidas++;
-            } else {
-              ultimoCandidato = elegido.rawValue;
-              vecesSeguidas = 1;
-            }
-
-            if (vecesSeguidas >= 2) {
-              detenerEscaneoSiActivo();
-              // Solo manda el código a la PC (no abre venta local).
-              enviarCodigoAComputadora(elegido.rawValue);
-              return;
+            const valor = procesarCandidatos(codigos);
+            if (valor && confirmarLectura(valor)) {
+              aceptarCodigo(valor);
             }
             requestAnimationFrame(detectarCuadro);
           })
           .catch(() => {
             if (!_detenido) requestAnimationFrame(detectarCuadro);
           });
+
+        // Pasada 2 (cada 2 cuadros): acercamiento digital extra al centro,
+        // con más contraste y más upscale. Esta es la que rescata códigos
+        // chicos, borrosos o impresos sobre superficie curva (botellas,
+        // frascos), que en la pasada normal quedan con muy poca resolución.
+        if (numCuadro % 2 === 0) {
+          const anchoZoom = RECUADRO_GUIA_ANCHO * 0.42;
+          const altoZoom = RECUADRO_GUIA_ALTO * 0.7;
+          prepararRecorte(
+            canvasZoom, ctxZoom,
+            0.5 - anchoZoom / 2, 0.5 - altoZoom / 2, anchoZoom, altoZoom,
+            1200, 8,
+            "contrast(1.35) brightness(1.05)"
+          );
+          detector
+            .detect(canvasZoom)
+            .then((codigos) => {
+              if (_detenido) return;
+              const valor = procesarCandidatos(codigos);
+              if (valor && confirmarLectura(valor)) {
+                aceptarCodigo(valor);
+              }
+            })
+            .catch(() => {});
+        }
+
+        // Pasada 3 (cada 5 cuadros): cuadro completo sin recortar, por si el
+        // código quedó fuera del recuadro guía (código muy grande o mal
+        // encuadrado). Escala baja porque ya es una imagen grande.
+        if (numCuadro % 5 === 0) {
+          prepararRecorte(canvasZoom, ctxZoom, 0, 0, 1, 1, 1600, 1.6);
+          detector
+            .detect(canvasZoom)
+            .then((codigos) => {
+              if (_detenido) return;
+              const valor = procesarCandidatos(codigos);
+              if (valor && confirmarLectura(valor)) {
+                aceptarCodigo(valor);
+              }
+            })
+            .catch(() => {});
+        }
       };
       requestAnimationFrame(detectarCuadro);
     })

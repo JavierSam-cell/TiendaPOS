@@ -148,10 +148,11 @@
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    width: 78%; height: 30%;
+    width: 88%; height: 40%;
     border: 2px dashed rgba(255,255,255,0.85);
     border-radius: 10px;
     pointer-events: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   .esc-linterna {
     position: absolute;
@@ -165,6 +166,33 @@
     z-index: 2;
   }
   .esc-linterna.activa { background: var(--warning); }
+
+  /* Destello verde breve al confirmar una lectura, sin apagar la cámara */
+  #esc-video-wrap.esc-lectura-ok::after {
+    border-color: var(--success, #22c55e);
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.35) inset;
+  }
+
+  .esc-zoom-controles {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    display: flex;
+    gap: 6px;
+    z-index: 2;
+  }
+  .esc-zoom-controles button {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.9);
+    font-size: 1.2rem;
+    font-weight: 800;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .esc-zoom-controles button:active { opacity: 0.85; }
 
   .esc-ultimo {
     display: none;
