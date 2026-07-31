@@ -156,7 +156,7 @@ const RECORTES_ESCANEO = [
 ];
 // Tras aceptar un código, ignora el MISMO un momento (evita spam) pero
 // deja la cámara abierta para el siguiente producto de inmediato.
-const COOLDOWN_MISMO_CODIGO_MS = 900;
+const COOLDOWN_MISMO_CODIGO_MS = 2500;
 
 let _stream = null;
 let _detenido = true;
@@ -292,6 +292,8 @@ function iniciarEscaneo() {
 
       const aceptarCodigo = (valor) => {
         const ahora = Date.now();
+        // Mismo código dentro del cooldown → se ignora (evita doble envío
+        // si sigues apuntando al mismo producto un segundo o dos).
         if (valor === ultimoAceptado && ahora - ultimoAceptadoTs < COOLDOWN_MISMO_CODIGO_MS) {
           return false;
         }
@@ -299,9 +301,14 @@ function iniciarEscaneo() {
         ultimoAceptadoTs = ahora;
         ultimoCandidato = null;
         vecesSeguidas = 0;
-        // NO apaga la cámara: listo para el siguiente producto enseguida.
+        // NO apaga la cámara: listo para el siguiente producto.
         enviarCodigoAComputadora(valor);
         return true;
+      };
+
+      const enCooldownMismo = (valor) => {
+        if (!valor || valor !== ultimoAceptado) return false;
+        return Date.now() - ultimoAceptadoTs < COOLDOWN_MISMO_CODIGO_MS;
       };
 
       const detectarCuadro = async () => {
@@ -346,15 +353,19 @@ function iniciarEscaneo() {
             validos.sort((a, b) => distanciaAlCentro(a, cx, cy) - distanciaAlCentro(b, cx, cy));
             const elegido = validos[0];
 
-            if (elegido.rawValue === ultimoCandidato) {
+            // Si es el mismo que acabamos de mandar, ni lo contamos.
+            if (enCooldownMismo(elegido.rawValue)) {
+              ultimoCandidato = null;
+              vecesSeguidas = 0;
+            } else if (elegido.rawValue === ultimoCandidato) {
               vecesSeguidas++;
             } else {
               ultimoCandidato = elegido.rawValue;
               vecesSeguidas = 1;
             }
 
-            // 1 lectura estable basta (antes eran 2 → más lento entre productos).
-            if (vecesSeguidas >= 1) {
+            // 2 lecturas seguidas del mismo código = más estable, menos dobles.
+            if (vecesSeguidas >= 2) {
               aceptarCodigo(elegido.rawValue);
             }
           }
