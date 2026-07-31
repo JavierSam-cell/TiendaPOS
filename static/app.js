@@ -457,36 +457,96 @@ function cerrarSesionLocal() {
 // ---------------------------------------------------------
 // Navegación por pestañas
 // ---------------------------------------------------------
+// Pestaña activa anterior: al salir de un formulario se limpia para no
+// dejar datos "pegados" (alta de producto, inventario, proveedor, etc.).
+// El carrito de Vender NO se toca: es trabajo en curso del cajero.
+let _tabAnterior = document.querySelector(".tab-btn.active")?.dataset.tab || "venta";
+
+function limpiarAlSalirDeTab(tab) {
+  if (!tab) return;
+  if (tab === "productos") {
+    if (typeof resetFormProducto === "function") resetFormProducto();
+  } else if (tab === "proveedores") {
+    if (typeof resetFormProveedor === "function") resetFormProveedor();
+  } else if (tab === "inventario") {
+    const form = document.getElementById("form-inventario");
+    if (form) form.reset();
+    const invCodigo = document.getElementById("inv-codigo");
+    if (invCodigo) invCodigo.readOnly = false;
+    if (typeof _limpiarSeleccionSinCodigo === "function") _limpiarSeleccionSinCodigo();
+    const info = document.getElementById("inv-producto-info");
+    if (info) info.style.display = "none";
+  } else if (tab === "gastos") {
+    const form = document.getElementById("form-gasto");
+    if (form) form.reset();
+  } else if (tab === "usuarios") {
+    const form = document.getElementById("form-usuario");
+    if (form) form.reset();
+    // Indicadores de fuerza de contraseña, si existen
+    document.querySelectorAll("#form-usuario .password-requirement").forEach((el) => {
+      el.classList.remove("password-requirement-met", "password-requirement-fail");
+    });
+    document.querySelectorAll("#form-usuario .strength-meter-segment").forEach((el) => {
+      el.className = "strength-meter-segment";
+    });
+    const strengthVal = document.querySelector("#form-usuario .strength-meter-value");
+    if (strengthVal) {
+      strengthVal.textContent = "—";
+      strengthVal.className = "strength-meter-value";
+    }
+  } else if (tab === "corte-caja") {
+    const contado = document.getElementById("corte-efectivo-contado");
+    const notas = document.getElementById("corte-notas");
+    if (contado) contado.value = "";
+    if (notas) notas.value = "";
+    const preview = document.getElementById("pc-diferencia-preview");
+    if (preview) preview.textContent = "";
+  } else if (tab === "venta") {
+    // Solo limpia búsqueda / alta rápida pendiente; el carrito se conserva.
+    const buscar = document.getElementById("buscar-venta-rapida");
+    if (buscar) buscar.value = "";
+    if (typeof filtrarVentaRapida === "function") filtrarVentaRapida("");
+    if (typeof ocultarAlertaNoEncontrado === "function") ocultarAlertaNoEncontrado();
+  }
+}
+
 document.querySelectorAll(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", (e) => {
     // Enlaces del menú (ej. Escáner remoto → /escanear): no son pestañas.
     if (!btn.dataset.tab) return;
+
+    const tabNueva = btn.dataset.tab;
+    if (_tabAnterior && _tabAnterior !== tabNueva) {
+      limpiarAlSalirDeTab(_tabAnterior);
+    }
+    _tabAnterior = tabNueva;
+
     document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
     document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
     btn.classList.add("active");
-    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    document.getElementById("tab-" + tabNueva).classList.add("active");
     document.getElementById("topbar-title").textContent = btn.dataset.titulo || btn.textContent.trim();
 
-    if (btn.dataset.tab === "venta") {
+    if (tabNueva === "venta") {
       const b = document.getElementById("buscar-venta-rapida");
       if (b) { b.focus(); if (b.value.trim()) filtrarVentaRapida(b.value); }
     }
-    if (btn.dataset.tab === "productos") cargarProveedoresSelects();
-    if (btn.dataset.tab === "catalogo") { cargarProductos(); cargarProveedoresSelects(); }
-    if (btn.dataset.tab === "lista-proveedores") cargarProveedores();
-    if (btn.dataset.tab === "inventario") cargarProductosSinCodigoInventario();
-    if (btn.dataset.tab === "movimientos") cargarMovimientos();
-    if (btn.dataset.tab === "alertas-stock") cargarBajoStock();
-    if (btn.dataset.tab === "notificaciones") {
+    if (tabNueva === "productos") cargarProveedoresSelects();
+    if (tabNueva === "catalogo") { cargarProductos(); cargarProveedoresSelects(); }
+    if (tabNueva === "lista-proveedores") cargarProveedores();
+    if (tabNueva === "inventario") cargarProductosSinCodigoInventario();
+    if (tabNueva === "movimientos") cargarMovimientos();
+    if (tabNueva === "alertas-stock") cargarBajoStock();
+    if (tabNueva === "notificaciones") {
       cargarResumenDia();
       cargarNotificaciones();
     }
-    if (btn.dataset.tab === "ver-gastos") cargarOtrosGastos();
-    if (btn.dataset.tab === "corte-caja") cargarCorteCaja();
-    if (btn.dataset.tab === "reportes") cargarReportes();
-    if (btn.dataset.tab === "usuarios") cargarUsuarios();
-    if (btn.dataset.tab === "permisos") cargarPermisos();
-    if (btn.dataset.tab === "configuracion") cargarConfiguracionAdmin();
+    if (tabNueva === "ver-gastos") cargarOtrosGastos();
+    if (tabNueva === "corte-caja") cargarCorteCaja();
+    if (tabNueva === "reportes") cargarReportes();
+    if (tabNueva === "usuarios") cargarUsuarios();
+    if (tabNueva === "permisos") cargarPermisos();
+    if (tabNueva === "configuracion") cargarConfiguracionAdmin();
 
     // Si llegó un código desde el celular mientras estabas en otra
     // pestaña (ej. Catálogo), al entrar a Vender/Agregar producto/
@@ -541,11 +601,22 @@ function aplicarCodigoRemotoSiCorresponde() {
     }
   } else if (tabActiva === "productos") {
     _codigoRemotoPendiente = null;
+    // Alta limpia con el código nuevo: si había datos de un intento anterior
+    // (o de una edición), se descartan para que el nombre se pueda
+    // autocompletar de internet y no quede "pegado" el producto viejo.
+    if (typeof resetFormProducto === "function") resetFormProducto();
+    document.getElementById("prod-tiene-codigo").checked = true;
+    if (typeof actualizarUIFormularioProducto === "function") actualizarUIFormularioProducto();
     document.getElementById("prod-codigo").value = codigo;
     autocompletarDesdeEscaneo(codigo);
     toast(`Código recibido desde el celular: ${codigo}`);
   } else if (tabActiva === "inventario") {
     _codigoRemotoPendiente = null;
+    // Limpia el movimiento anterior y carga el producto del código nuevo.
+    const formInv = document.getElementById("form-inventario");
+    if (formInv) formInv.reset();
+    document.getElementById("inv-codigo").readOnly = false;
+    if (typeof _limpiarSeleccionSinCodigo === "function") _limpiarSeleccionSinCodigo();
     document.getElementById("inv-codigo").value = codigo;
     buscarProductoParaInventario(codigo);
     toast(`Código recibido desde el celular: ${codigo}`);
@@ -955,7 +1026,17 @@ document.getElementById("btn-scan").addEventListener("click", () => {
   iniciarEscaner("reader", (codigo) => agregarAlCarritoPorCodigo(codigo));
 });
 document.getElementById("btn-scan-alta").addEventListener("click", () => {
-  iniciarEscaner("reader-alta", (codigo) => autocompletarDesdeEscaneo(codigo));
+  iniciarEscaner("reader-alta", (codigo) => {
+    // Nuevo escaneo en alta: limpia el formulario si no es edición, para
+    // no mezclar datos de un producto anterior con el código recién leído.
+    const esEdicion = !!document.getElementById("prod-id").value;
+    if (!esEdicion && typeof resetFormProducto === "function") {
+      resetFormProducto();
+      document.getElementById("prod-tiene-codigo").checked = true;
+      if (typeof actualizarUIFormularioProducto === "function") actualizarUIFormularioProducto();
+    }
+    autocompletarDesdeEscaneo(codigo);
+  });
 });
 
 /**
