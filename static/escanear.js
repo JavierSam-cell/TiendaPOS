@@ -162,6 +162,50 @@ let _pistaVideo = null;
 let _ultimoCodigoEnviado = null;
 let _ultimoEnvioTs = 0;
 
+// ---------------------------------------------------------
+// Motor de lectura de códigos: SIEMPRE usa el decodificador ZXing
+// (WebAssembly), en vez del BarcodeDetector nativo del celular.
+// ¿Por qué? En Android, el nativo (Google ML Kit) suele fallar con
+// códigos chicos, borrosos o impresos sobre superficies curvas (una
+// botella). ZXing prueba varios algoritmos de binarización/rotación
+// internamente ("tryHarder") y es notablemente mejor en esos casos.
+// El script cargado en el HTML (barcode-detector .../ponyfill.min.js)
+// expone esta implementación en window.BarcodeDetectionAPI SIN pisar
+// el BarcodeDetector nativo, así que la elegimos nosotros a propósito.
+// ---------------------------------------------------------
+function crearDetectorCodigos() {
+  const ClaseZXing =
+    window.BarcodeDetectionAPI && window.BarcodeDetectionAPI.BarcodeDetector;
+  if (ClaseZXing) return new ClaseZXing({ formats: FORMATOS_CODIGO_BARRAS });
+  // Respaldo si por algún motivo el script de ZXing no cargó (sin
+  // internet la primera vez, CDN bloqueado, etc.): usa el nativo si
+  // existe, para que el escáner no quede totalmente inutilizable.
+  if (window.BarcodeDetector) {
+    return new window.BarcodeDetector({ formats: FORMATOS_CODIGO_BARRAS });
+  }
+  return null;
+}
+
+let _detectorCodigos = null;
+function obtenerDetectorCodigos() {
+  if (!_detectorCodigos) _detectorCodigos = crearDetectorCodigos();
+  return _detectorCodigos;
+}
+
+// Precalienta el motor WASM en cuanto carga la página (no cuando el
+// cajero toca "Escanear"), para que el primer código del día no tarde
+// de más mientras se descarga/compila el .wasm.
+(function precalentarDetector() {
+  try {
+    const det = obtenerDetectorCodigos();
+    if (!det) return;
+    const c = document.createElement("canvas");
+    c.width = 10;
+    c.height = 10;
+    det.detect(c).catch(() => {});
+  } catch (_) { /* ignore */ }
+})();
+
 function checksumEanUpcValido(codigo) {
   if (!/^\d{8}$|^\d{12}$|^\d{13}$/.test(codigo)) return true;
   const cuerpo = codigo.slice(0, -1).split("").map(Number);
@@ -252,14 +296,22 @@ function iniciarEscaneo() {
   video.muted = true;
   contenedor.appendChild(video);
 
-  // Dos canvases: uno para el recuadro guía normal, otro para un acercamiento
-  // digital extra centrado, que es lo que permite leer códigos pequeños,
-  // borrosos o impresos sobre superficies curvas (como una botella).
+  // Tres canvases DISTINTOS, uno por cada tipo de pasada, para que nunca se
+  // pisen entre sí (antes, dos pasadas compartían canvas y podían leer un
+  // recorte a medio dibujar si coincidían en el mismo cuadro).
   const canvasNormal = document.createElement("canvas");
   const ctxNormal = canvasNormal.getContext("2d", { willReadFrequently: true });
   const canvasZoom = document.createElement("canvas");
   const ctxZoom = canvasZoom.getContext("2d", { willReadFrequently: true });
-  const detector = new BarcodeDetector({ formats: FORMATOS_CODIGO_BARRAS });
+  const canvasCompleto = document.createElement("canvas");
+  const ctxCompleto = canvasCompleto.getContext("2d", { willReadFrequently: true });
+
+  const detector = obtenerDetectorCodigos();
+  if (!detector) {
+    toast("Este navegador no puede leer códigos de barras", true);
+    detenerEscaneoSiActivo();
+    return;
+  }
 
   _detenido = false;
   _ultimoCodigoEnviado = null;
@@ -348,16 +400,41 @@ function iniciarEscaneo() {
         const ahora = Date.now();
         const esRepetidoReciente =
           codigo === _ultimoCodigoEnviado && ahora - _ultimoEnvioTs < COOLDOWN_MISMO_CODIGO_MS;
-        if (esRepetidoReciente) return; // seguimos viendo el mismo, no lo reenviamos
+        if (esRepetidoReciente) return false; // seguimos viendo el mismo, no lo reenviamos
         _ultimoCodigoEnviado = codigo;
         _ultimoEnvioTs = ahora;
         destellarLecturaOk();
         // Solo manda el código a la PC (no abre venta local). La cámara
         // SIGUE ACTIVA: no hay que tocar el botón para escanear el siguiente.
         enviarCodigoAComputadora(codigo);
+        return true;
       };
 
-      const detectarCuadro = () => {
+      /** Corre detector.detect() sobre un recorte y procesa el resultado. */
+      const intentarPasada = async (canvas, ctx, cfg) => {
+        prepararRecorte(canvas, ctx, cfg.x, cfg.y, cfg.w, cfg.h, cfg.ancho, cfg.escalaMax, cfg.filtro);
+        try {
+          const codigos = await detector.detect(canvas);
+          if (_detenido) return false;
+          const valor = procesarCandidatos(codigos);
+          if (valor && confirmarLectura(valor)) {
+            return aceptarCodigo(valor);
+          }
+        } catch (_) { /* frame ilegible, se intenta con el siguiente */ }
+        return false;
+      };
+
+      const xGuia = (1 - RECUADRO_GUIA_ANCHO) / 2;
+      const yGuia = (1 - RECUADRO_GUIA_ALTO) / 2;
+      const anchoZoom = RECUADRO_GUIA_ANCHO * 0.42;
+      const altoZoom = RECUADRO_GUIA_ALTO * 0.7;
+
+      // Pasadas ejecutadas EN SECUENCIA (nunca en paralelo, así se evita que
+      // dos detecciones compitan por el mismo canvas o por CPU al mismo
+      // tiempo, que era parte de por qué se sentía lento). El <video> sigue
+      // fluido de todos modos porque el navegador lo pinta aparte de este
+      // bucle de análisis.
+      const detectarCuadro = async () => {
         if (_detenido) return;
         if (!video.videoWidth) {
           requestAnimationFrame(detectarCuadro);
@@ -365,68 +442,33 @@ function iniciarEscaneo() {
         }
         numCuadro++;
 
-        const xGuia = (1 - RECUADRO_GUIA_ANCHO) / 2;
-        const yGuia = (1 - RECUADRO_GUIA_ALTO) / 2;
+        // Pasada 1 (cada cuadro): recuadro guía completo, tamaño normal.
+        let encontrado = await intentarPasada(canvasNormal, ctxNormal, {
+          x: xGuia, y: yGuia, w: RECUADRO_GUIA_ANCHO, h: RECUADRO_GUIA_ALTO,
+          ancho: 950, escalaMax: 3,
+        });
 
-        // Pasada 1 (cada cuadro): recuadro guía completo, para códigos de
-        // tamaño normal o grande. Escala moderada.
-        prepararRecorte(canvasNormal, ctxNormal, xGuia, yGuia, RECUADRO_GUIA_ANCHO, RECUADRO_GUIA_ALTO, 1300, 4);
-
-        detector
-          .detect(canvasNormal)
-          .then((codigos) => {
-            if (_detenido) return;
-            const valor = procesarCandidatos(codigos);
-            if (valor && confirmarLectura(valor)) {
-              aceptarCodigo(valor);
-            }
-            requestAnimationFrame(detectarCuadro);
-          })
-          .catch(() => {
-            if (!_detenido) requestAnimationFrame(detectarCuadro);
+        // Pasada 2 (cada cuadro): acercamiento digital al centro con más
+        // contraste y más upscale. Esta es la que rescata códigos chicos,
+        // borrosos o impresos sobre una superficie curva (botellas), que en
+        // la pasada normal quedan con muy poca resolución.
+        if (!encontrado && !_detenido) {
+          encontrado = await intentarPasada(canvasZoom, ctxZoom, {
+            x: 0.5 - anchoZoom / 2, y: 0.5 - altoZoom / 2, w: anchoZoom, h: altoZoom,
+            ancho: 850, escalaMax: 7, filtro: "contrast(1.35) brightness(1.05)",
           });
-
-        // Pasada 2 (cada 2 cuadros): acercamiento digital extra al centro,
-        // con más contraste y más upscale. Esta es la que rescata códigos
-        // chicos, borrosos o impresos sobre superficie curva (botellas,
-        // frascos), que en la pasada normal quedan con muy poca resolución.
-        if (numCuadro % 2 === 0) {
-          const anchoZoom = RECUADRO_GUIA_ANCHO * 0.42;
-          const altoZoom = RECUADRO_GUIA_ALTO * 0.7;
-          prepararRecorte(
-            canvasZoom, ctxZoom,
-            0.5 - anchoZoom / 2, 0.5 - altoZoom / 2, anchoZoom, altoZoom,
-            1200, 8,
-            "contrast(1.35) brightness(1.05)"
-          );
-          detector
-            .detect(canvasZoom)
-            .then((codigos) => {
-              if (_detenido) return;
-              const valor = procesarCandidatos(codigos);
-              if (valor && confirmarLectura(valor)) {
-                aceptarCodigo(valor);
-              }
-            })
-            .catch(() => {});
         }
 
-        // Pasada 3 (cada 5 cuadros): cuadro completo sin recortar, por si el
-        // código quedó fuera del recuadro guía (código muy grande o mal
-        // encuadrado). Escala baja porque ya es una imagen grande.
-        if (numCuadro % 5 === 0) {
-          prepararRecorte(canvasZoom, ctxZoom, 0, 0, 1, 1, 1600, 1.6);
-          detector
-            .detect(canvasZoom)
-            .then((codigos) => {
-              if (_detenido) return;
-              const valor = procesarCandidatos(codigos);
-              if (valor && confirmarLectura(valor)) {
-                aceptarCodigo(valor);
-              }
-            })
-            .catch(() => {});
+        // Pasada 3 (cada 3 cuadros): cuadro completo sin recortar, por si el
+        // código quedó fuera del recuadro guía (código muy grande, botella
+        // ladeada, o mal encuadrado).
+        if (!encontrado && !_detenido && numCuadro % 3 === 0) {
+          await intentarPasada(canvasCompleto, ctxCompleto, {
+            x: 0, y: 0, w: 1, h: 1, ancho: 1100, escalaMax: 1.4,
+          });
         }
+
+        if (!_detenido) requestAnimationFrame(detectarCuadro);
       };
       requestAnimationFrame(detectarCuadro);
     })
