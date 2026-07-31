@@ -80,7 +80,8 @@ async function cargarSesionGuardada() {
     await cargarPermisos();
     mostrarPantallaScan();
   } else {
-    mostrarPantallaLogin();
+    // Sin sesión: al login principal (una sola pantalla de acceso).
+    window.location.replace("/");
   }
 }
 
@@ -89,8 +90,9 @@ function cerrarSesionLocal() {
   localStorage.removeItem("pos_usuario");
   sesion = { token: null, usuario: null };
   carritoEsc = [];
-  detenerEscaneoSiActivo();
-  mostrarPantallaLogin();
+  try { detenerEscaneoSiActivo(); } catch (_) {}
+  // Siempre al login principal del POS (/), no al login embebido de /escanear.
+  window.location.replace("/");
 }
 
 function mostrarPantallaLogin() {
