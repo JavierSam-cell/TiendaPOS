@@ -196,6 +196,29 @@
     cursor: pointer;
   }
 
+  .esc-no-encontrado {
+    margin-top: 16px;
+    padding: 14px;
+    border-radius: var(--radius-md);
+    background: #fff7e6;
+    border: 1px solid var(--warning);
+  }
+  .esc-no-encontrado p {
+    margin: 0 0 12px;
+    font-size: 0.88rem;
+    color: var(--text);
+  }
+  .esc-no-encontrado .esc-field input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line);
+    font-size: 1rem;
+    font-family: var(--font-ui);
+  }
+  .esc-no-encontrado .esc-btn { margin-top: 6px; }
+
   #toast-esc {
     position: fixed;
     left: 50%;
@@ -267,12 +290,34 @@
       </div>
     </div>
 
+    <!-- Aviso de producto no encontrado + alta rápida (solo admin) -->
+    <div class="esc-no-encontrado" id="esc-no-encontrado" style="display:none">
+      <p id="esc-texto-no-encontrado"></p>
+      <form id="esc-form-alta-rapida" style="display:none">
+        <input type="hidden" id="esc-rapido-codigo">
+        <div class="esc-field">
+          <label for="esc-rapido-nombre">Nombre del producto *</label>
+          <input id="esc-rapido-nombre" placeholder="Nombre del producto" required>
+        </div>
+        <div class="esc-field">
+          <label for="esc-rapido-precio">Precio de venta *</label>
+          <input id="esc-rapido-precio" type="number" step="0.01" inputmode="decimal" placeholder="0.00" required>
+        </div>
+        <div class="esc-field">
+          <label for="esc-rapido-stock">Stock inicial</label>
+          <input id="esc-rapido-stock" type="number" inputmode="numeric" value="1">
+        </div>
+        <button type="submit" class="esc-btn">Guardar producto</button>
+        <button type="button" id="esc-btn-cancelar-alta-rapida" class="esc-btn esc-btn-secundario">Cancelar</button>
+      </form>
+    </div>
+
     <button class="esc-btn esc-btn-secundario" id="esc-btn-salir" type="button">Cerrar sesión</button>
   </div>
 </div>
 
 <div id="toast-esc"></div>
 
-<script src="/static/escanear.js?v=1"></script>
+<script src="/static/escanear.js?v=2"></script>
 </body>
 </html>

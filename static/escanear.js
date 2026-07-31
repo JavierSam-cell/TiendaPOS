@@ -303,10 +303,91 @@ async function enviarCodigoEscaneado(codigo) {
     document.getElementById("esc-ultimo-codigo").textContent = codigo;
     ultimo.classList.add("mostrar");
     setTimeout(() => ultimo.classList.remove("mostrar"), 3000);
+    // Además de mandarlo a la compu, se revisa aquí mismo si el producto
+    // existe: si no, se ofrece darlo de alta desde el celular (igual que
+    // en la pantalla de Vender), en vez de dejar al usuario sin saber
+    // qué pasó con el código que acaba de escanear.
+    revisarCodigoLocal(codigo);
   } catch (err) {
     toast(err.message || "No se pudo enviar el código", true);
   }
 }
+
+// ---------------------------------------------------------
+// Si el código no está en el catálogo, se busca en internet y se
+// ofrece darlo de alta directo desde el celular (mismo flujo que la
+// pantalla de Vender en la computadora).
+// ---------------------------------------------------------
+async function revisarCodigoLocal(codigo) {
+  ocultarNoEncontrado();
+  try {
+    await api(`/productos/codigo/${encodeURIComponent(codigo)}`);
+    // El producto ya existe: no hace falta nada más, ya se mandó a la compu.
+  } catch (err) {
+    if (err.message.includes("no encontrado") || err.message.includes("Producto no")) {
+      mostrarNoEncontrado(codigo);
+    }
+    // Otros errores (de red, etc.) se ignoran aquí para no interrumpir el escaneo.
+  }
+}
+
+async function mostrarNoEncontrado(codigo) {
+  const panel = document.getElementById("esc-no-encontrado");
+  const texto = document.getElementById("esc-texto-no-encontrado");
+  const form = document.getElementById("esc-form-alta-rapida");
+  panel.style.display = "block";
+
+  if (sesion.usuario && sesion.usuario.rol === "admin") {
+    texto.textContent = `El código "${codigo}" no está registrado. Buscando en internet...`;
+    document.getElementById("esc-rapido-codigo").value = codigo;
+    document.getElementById("esc-rapido-nombre").value = "";
+    document.getElementById("esc-rapido-precio").value = "";
+    document.getElementById("esc-rapido-stock").value = 1;
+    form.style.display = "block";
+
+    try {
+      const resultado = await api(`/productos/buscar-web/${encodeURIComponent(codigo)}`);
+      if (resultado.encontrado) {
+        document.getElementById("esc-rapido-nombre").value = resultado.nombre;
+        texto.textContent = `El código "${codigo}" no está registrado. Encontramos este producto en internet, revisa el nombre y completa el precio:`;
+      } else {
+        texto.textContent = `El código "${codigo}" no está registrado y no lo encontramos en internet. Dalo de alta manualmente:`;
+      }
+    } catch (e) {
+      texto.textContent = `El código "${codigo}" no está registrado (sin conexión a internet para buscarlo). Dalo de alta manualmente:`;
+    }
+  } else {
+    texto.textContent = `El código "${codigo}" no está registrado. Pide a un administrador que lo dé de alta.`;
+    form.style.display = "none";
+  }
+}
+
+function ocultarNoEncontrado() {
+  document.getElementById("esc-no-encontrado").style.display = "none";
+}
+
+document.getElementById("esc-btn-cancelar-alta-rapida").addEventListener("click", ocultarNoEncontrado);
+
+document.getElementById("esc-form-alta-rapida").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const codigo = document.getElementById("esc-rapido-codigo").value;
+  const payload = {
+    codigo_barras: codigo,
+    nombre: document.getElementById("esc-rapido-nombre").value,
+    precio_venta: parseFloat(document.getElementById("esc-rapido-precio").value),
+    stock: parseInt(document.getElementById("esc-rapido-stock").value || 1),
+  };
+  try {
+    await api("/productos", { method: "POST", body: JSON.stringify(payload) });
+    toast("Producto dado de alta");
+    ocultarNoEncontrado();
+    // Se vuelve a mandar el código: ahora sí existe, así que si en la
+    // compu están parados en Vender lo agrega solo al carrito.
+    enviarCodigoEscaneado(codigo);
+  } catch (err) {
+    toast(err.message || "No se pudo dar de alta el producto", true);
+  }
+});
 
 document.getElementById("esc-manual-btn").addEventListener("click", () => {
   const input = document.getElementById("esc-manual-input");
