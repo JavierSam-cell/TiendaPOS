@@ -3328,4 +3328,11 @@ def index():
 
 @app.get("/escanear")
 def pagina_escanear():
+    """Celular como lector: solo envía códigos a la PC (misma cuenta)."""
     return FileResponse("static/escanear.html")
+
+
+@app.get("/venta_celular")
+def pagina_venta_celular():
+    """Venta completa desde el celular (buscar, carrito y cobro)."""
+    return FileResponse("static/venta_celular.html")
