@@ -37,7 +37,7 @@ class ProductoBase(BaseModel):
     costo: float = Field(ge=0, default=0.0)
     stock: float = Field(ge=0, default=0)
     stock_minimo: float = Field(ge=0, default=0)
-    unidad_venta: str = "pieza"          # 'pieza' o 'kg'
+    unidad_venta: str = "pieza"          # pieza | kg | litro | caja | paquete | bolsa
     requiere_codigo: bool = True          # False = producto a granel / sin código
     proveedor_id: Optional[int] = None    # proveedor que surte este producto
 

@@ -737,6 +737,12 @@ const FORMATOS_CODIGO_BARRAS = [
 // cambia el otro para que el recorte sea justo lo que el usuario ve.
 const RECUADRO_GUIA_ANCHO = 0.70;
 const RECUADRO_GUIA_ALTO = 0.32;
+const RECORTES_ESCANEO_APP = [
+  { ancho: 0.70, alto: 0.32 },
+  { ancho: 0.50, alto: 0.24 },
+  { ancho: 0.34, alto: 0.18 },
+  { ancho: 0.24, alto: 0.14 },
+];
 
 // El script "barcode-detector" (polyfill) cargado en index.html garantiza
 // que window.BarcodeDetector exista en TODOS los navegadores: si el
@@ -840,78 +846,76 @@ function iniciarLectorNativo(el, onResultado) {
       // casi instantáneo para el usuario.
       let ultimoCandidato = null;
       let vecesSeguidas = 0;
+      let indiceRecorte = 0;
+      let detectando = false;
 
-      const detectarCuadro = () => {
+      const detectarCuadro = async () => {
         if (detenido) return;
         if (!video.videoWidth) {
-          // El video aún no tiene dimensiones (primer(os) cuadro(s)).
           requestAnimationFrame(detectarCuadro);
           return;
         }
+        if (detectando) {
+          requestAnimationFrame(detectarCuadro);
+          return;
+        }
+        detectando = true;
+        try {
+          const recorte = RECORTES_ESCANEO_APP[indiceRecorte % RECORTES_ESCANEO_APP.length];
+          indiceRecorte++;
+          const vw = video.videoWidth;
+          const vh = video.videoHeight;
+          const anchoRecorte = vw * recorte.ancho;
+          const altoRecorte = vh * recorte.alto;
+          const xRecorte = (vw - anchoRecorte) / 2;
+          const yRecorte = (vh - altoRecorte) / 2;
+          const escala = Math.min(5, Math.max(1.2, 1100 / anchoRecorte));
+          canvasRecorte.width = Math.round(anchoRecorte * escala);
+          canvasRecorte.height = Math.round(altoRecorte * escala);
+          ctxRecorte.imageSmoothingEnabled = false;
+          ctxRecorte.filter = "contrast(1.25) brightness(1.05)";
+          ctxRecorte.drawImage(
+            video,
+            xRecorte, yRecorte, anchoRecorte, altoRecorte,
+            0, 0, canvasRecorte.width, canvasRecorte.height
+          );
+          ctxRecorte.filter = "none";
 
-        // Recorta exactamente el área del recuadro guía, en coordenadas
-        // reales del video (no de la pantalla), y la agranda al tamaño
-        // del canvas: es el efecto "zoom" que hace que el código se lea
-        // mucho más rápido y sin errores que analizando el video entero.
-        const anchoRecorte = video.videoWidth * RECUADRO_GUIA_ANCHO;
-        const altoRecorte = video.videoHeight * RECUADRO_GUIA_ALTO;
-        const xRecorte = (video.videoWidth - anchoRecorte) / 2;
-        const yRecorte = (video.videoHeight - altoRecorte) / 2;
+          let codigos = [];
+          try {
+            codigos = await detector.detect(canvasRecorte);
+          } catch (_) {
+            codigos = [];
+          }
+          if (detenido) return;
 
-        // Si el recorte sale chico (cámara con poca resolución real),
-        // lo agrandamos más al dibujarlo para darle al decodificador
-        // suficientes píxeles por barra. Si ya sale grande, no hace
-        // falta agrandar más (sería trabajo extra sin beneficio).
-        const escala = Math.min(3, Math.max(1, 900 / anchoRecorte));
-        canvasRecorte.width = Math.round(anchoRecorte * escala);
-        canvasRecorte.height = Math.round(altoRecorte * escala);
-        ctxRecorte.imageSmoothingEnabled = escala <= 1; // nítido al agrandar
-        ctxRecorte.drawImage(
-          video,
-          xRecorte, yRecorte, anchoRecorte, altoRecorte,
-          0, 0, canvasRecorte.width, canvasRecorte.height
-        );
+          const validos = codigos
+            .map((c) => ({ ...c, rawValue: String(c.rawValue || "").replace(/\s+/g, "") }))
+            .filter((c) => c.rawValue && checksumEanUpcValido(c.rawValue));
 
-        detector
-          .detect(canvasRecorte)
-          .then((codigos) => {
-            if (detenido) return;
-
-            // Descarta lecturas cuyo dígito verificador (checksum) no
-            // cuadra: un código mal leído casi nunca da un checksum válido.
-            const validos = codigos.filter((c) => checksumEanUpcValido(c.rawValue));
-            if (validos.length === 0) {
-              vecesSeguidas = 0;
-              requestAnimationFrame(detectarCuadro);
-              return;
-            }
-
-            // Ya casi nunca hay más de un código dentro del recuadro
-            // recortado, pero por si acaso, prioriza el más cercano al
-            // centro (normalmente es al que le apuntas).
+          if (validos.length === 0) {
+            if (vecesSeguidas > 0) vecesSeguidas = Math.max(0, vecesSeguidas - 1);
+          } else {
             const cx = canvasRecorte.width / 2;
             const cy = canvasRecorte.height / 2;
             validos.sort(
               (a, b) => distanciaAlCentro(a, cx, cy) - distanciaAlCentro(b, cx, cy)
             );
             const elegido = validos[0];
-
-            if (elegido.rawValue === ultimoCandidato) {
-              vecesSeguidas++;
-            } else {
+            if (elegido.rawValue === ultimoCandidato) vecesSeguidas++;
+            else {
               ultimoCandidato = elegido.rawValue;
               vecesSeguidas = 1;
             }
-
-            if (vecesSeguidas >= 2) {
+            if (vecesSeguidas >= 1) {
               onResultado(elegido.rawValue);
               return;
             }
-            requestAnimationFrame(detectarCuadro);
-          })
-          .catch(() => {
-            if (!detenido) requestAnimationFrame(detectarCuadro);
-          });
+          }
+        } finally {
+          detectando = false;
+          if (!detenido) requestAnimationFrame(detectarCuadro);
+        }
       };
       requestAnimationFrame(detectarCuadro);
     })
@@ -1120,10 +1124,10 @@ async function buscarProductoParaInventario(codigo) {
     // Si el producto se vende a granel, la cantidad del movimiento se
     // captura en kilogramos con decimales (ej. 2.500); si es por pieza,
     // se mantiene en números enteros.
-    const esKg = producto.unidad_venta === "kg";
+    const info = infoUnidad(producto.unidad_venta);
     const inputCantidad = document.getElementById("inv-cantidad");
-    inputCantidad.step = esKg ? "0.001" : "1";
-    inputCantidad.placeholder = esKg ? "Cantidad en kg *" : "Cantidad *";
+    inputCantidad.step = String(info.step);
+    inputCantidad.placeholder = `Cantidad (${info.corto}) *`;
   } catch (e) {
     caja.style.display = "none";
     toast(`Código "${codigo}" no encontrado`, true);
@@ -1177,8 +1181,8 @@ function _renderListaSinCodigoInventario(productos) {
     const item = document.createElement("button");
     item.type = "button";
     item.className = "combo-item";
-    const precioTexto = p.unidad_venta === "kg" ? `$${p.precio_venta.toFixed(2)}/kg` : `$${p.precio_venta.toFixed(2)}`;
-    const extra = p.unidad_venta === "kg" ? " (a granel)" : (p.requiere_codigo === false ? "" : "");
+    const precioTexto = `$${Number(p.precio_venta).toFixed(2)}${sufijoPrecioUnidad(p.unidad_venta)}`;
+    const extra = esUnidadContinua(p.unidad_venta) ? ` (${infoUnidad(p.unidad_venta).label})` : (p.requiere_codigo === false ? "" : "");
     item.innerHTML = `<span>${p.nombre}${extra}</span><span class="precio-rapido">${precioTexto}</span>`;
     item.addEventListener("click", () => _seleccionarProductoSinCodigo(p));
     lista.appendChild(item);
@@ -1279,7 +1283,7 @@ async function agregarAlCarritoPorCodigo(codigo) {
 
     // Productos a granel (se venden por peso): siempre se captura la
     // cantidad exacta en el diálogo, nunca se suma "+1" a lo tonto.
-    if (producto.unidad_venta === "kg") {
+    if (esUnidadContinua(producto.unidad_venta)) {
       abrirModalCantidad(producto);
       return;
     }
@@ -1389,11 +1393,58 @@ activarAutoDeteccion(inputCodigoVenta, (codigo) => {
   inputCodigoVenta.value = "";
 });
 
+// ---------------------------------------------------------
+// UNIDADES DE VENTA
+// pieza = entera | kg/litro = continua | caja/paquete/bolsa = media (0.5)
+// ---------------------------------------------------------
+const UNIDADES_INFO = {
+  pieza:   { label: "Pieza",   corto: "pza",   tipo: "entera",   step: 1,   presets: [1, 2, 3, 5],     precioSufijo: "" },
+  kg:      { label: "Kilogramo", corto: "kg",  tipo: "continua", step: 0.001, presets: null,         precioSufijo: "/kg",
+             sub: { menor: { id: "g", label: "Gramos", factor: 1000, step: 1, presets: [100, 150, 200, 250] },
+                    mayor: { id: "kg", label: "Kilos", factor: 1, step: 0.1, presets: [0.5, 1, 1.5, 2] } } },
+  litro:   { label: "Litro",   corto: "L",     tipo: "continua", step: 0.001, presets: null,         precioSufijo: "/L",
+             sub: { menor: { id: "ml", label: "ml", factor: 1000, step: 10, presets: [250, 500, 750, 1000] },
+                    mayor: { id: "L", label: "Litros", factor: 1, step: 0.1, presets: [0.5, 1, 1.5, 2] } } },
+  caja:    { label: "Caja",    corto: "caja",  tipo: "media",    step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+  paquete: { label: "Paquete", corto: "paq",   tipo: "media",    step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+  bolsa:   { label: "Bolsa",   corto: "bolsa", tipo: "media",    step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+};
+
+function infoUnidad(unidad) {
+  return UNIDADES_INFO[unidad] || UNIDADES_INFO.pieza;
+}
+
 function formatearCantidad(cantidad, unidadVenta) {
-  if (unidadVenta === "kg") {
-    return cantidad < 1 ? `${Math.round(cantidad * 1000)} g` : `${cantidad.toFixed(3)} kg`;
+  const u = unidadVenta || "pieza";
+  const n = Number(cantidad) || 0;
+  if (u === "kg") {
+    return n < 1 ? `${Math.round(n * 1000)} g` : `${Number(n.toFixed(3))} kg`;
   }
-  return String(cantidad);
+  if (u === "litro") {
+    return n < 1 ? `${Math.round(n * 1000)} ml` : `${Number(n.toFixed(3))} L`;
+  }
+  if (u === "caja" || u === "paquete" || u === "bolsa") {
+    const info = infoUnidad(u);
+    const etiqueta = (n === 1) ? info.label.toLowerCase() : (u === "caja" ? "cajas" : u === "paquete" ? "paquetes" : "bolsas");
+    return `${Number(n.toFixed(2))} ${etiqueta}`;
+  }
+  return String(n);
+}
+
+function sufijoPrecioUnidad(unidadVenta) {
+  return infoUnidad(unidadVenta).precioSufijo || "";
+}
+
+function esUnidadContinua(unidad) {
+  return infoUnidad(unidad).tipo === "continua";
+}
+
+function esUnidadMedia(unidad) {
+  return infoUnidad(unidad).tipo === "media";
+}
+
+function pasoCantidad(unidad) {
+  return infoUnidad(unidad).step || 1;
 }
 
 function renderCarrito() {
@@ -1403,15 +1454,20 @@ function renderCarrito() {
   carrito.forEach((item, idx) => {
     const subtotal = item.precio * item.cantidad;
     total += subtotal;
-    const esKg = item.unidad_venta === "kg";
+    const continua = esUnidadContinua(item.unidad_venta);
+    const media = esUnidadMedia(item.unidad_venta);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${item.nombre}</td>
-      <td>$${item.precio.toFixed(2)}${esKg ? "/kg" : ""}</td>
+      <td>$${item.precio.toFixed(2)}${sufijoPrecioUnidad(item.unidad_venta)}</td>
       <td>
-        ${esKg
-          ? `${formatearCantidad(item.cantidad, "kg")} <button class="link-btn" onclick="editarCantidadCarrito(${idx})">✎ Editar</button>`
-          : `<button class="link-btn" onclick="cambiarCantidad(${idx}, -1)">−</button>
+        ${continua
+          ? `${formatearCantidad(item.cantidad, item.unidad_venta)} <button class="link-btn" onclick="editarCantidadCarrito(${idx})">✎ Editar</button>`
+          : media
+            ? `<button class="link-btn" onclick="cambiarCantidad(${idx}, -0.5)">−</button>
+             ${formatearCantidad(item.cantidad, item.unidad_venta)}
+             <button class="link-btn" onclick="cambiarCantidad(${idx}, 0.5)">+</button>`
+            : `<button class="link-btn" onclick="cambiarCantidad(${idx}, -1)">−</button>
              ${item.cantidad}
              <button class="link-btn" onclick="cambiarCantidad(${idx}, 1)">+</button>`}
       </td>
@@ -1425,11 +1481,12 @@ function renderCarrito() {
 
 function cambiarCantidad(idx, delta) {
   const item = carrito[idx];
-  if (delta > 0 && item.cantidad + delta > item.stock) {
-    toast(`No hay suficiente stock de "${item.nombre}" (disponible: ${item.stock})`, true);
+  const nueva = Math.round((item.cantidad + delta) * 1000) / 1000;
+  if (delta > 0 && nueva > item.stock) {
+    toast(`No hay suficiente stock de "${item.nombre}" (disponible: ${formatearCantidad(item.stock, item.unidad_venta)})`, true);
     return;
   }
-  item.cantidad += delta;
+  item.cantidad = nueva;
   if (item.cantidad <= 0) carrito.splice(idx, 1);
   renderCarrito();
 }
@@ -1544,7 +1601,7 @@ function renderGridVentaRapida(productos, { modo = "top" } = {}) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "btn-venta-rapida";
-    const precioTexto = p.unidad_venta === "kg" ? `$${p.precio_venta.toFixed(2)}/kg` : `$${p.precio_venta.toFixed(2)}`;
+    const precioTexto = `$${Number(p.precio_venta).toFixed(2)}${sufijoPrecioUnidad(p.unidad_venta)}`;
     const marcaCodigo = p.requiere_codigo === false
       ? ""
       : `<span class="precio-rapido" style="opacity:0.65">· código</span>`;
@@ -1636,150 +1693,177 @@ inputBuscarVenta.addEventListener("keydown", (e) => {
 
 let _productoModalCantidad = null;
 let _idxEdicionCarrito = null;
-// Unidad en la que el CAJERO está escribiendo la cantidad dentro del modal:
-// "g" (gramos, para compras chicas como 100 g de jamón) o "kg" (kilos enteros
-// o medios kilos). El carrito y el stock siempre se guardan en kilogramos por
-// dentro; esto solo cambia cómo se ve/captura el número en pantalla.
-let _unidadModalCantidad = "g";
+// Para unidades continuas (kg / litro): sub-unidad de captura (g|kg o ml|L).
+// Para el resto: "base" (la propia unidad del producto).
+let _unidadModalCantidad = "base";
+// Unidad de venta del producto abierto en el modal (pieza, kg, litro…).
+let _unidadProductoModal = "pieza";
 
-// Convierte lo que hay en el input (en la unidad visible: g o kg) a kilogramos,
-// que es la unidad que usa el resto del sistema (carrito, stock, backend).
-function _cantidadEnKgDesdeInput() {
+/** Convierte lo del input a la unidad base del producto (kg o L). */
+function _cantidadBaseDesdeInput() {
   const valor = parseFloat(document.getElementById("mcr-cantidad").value) || 0;
-  return _unidadModalCantidad === "g" ? valor / 1000 : valor;
+  const info = infoUnidad(_unidadProductoModal);
+  if (info.tipo === "continua" && info.sub) {
+    if (_unidadModalCantidad === info.sub.menor.id) return valor / info.sub.menor.factor;
+    return valor; // ya en unidad mayor (kg o L)
+  }
+  return valor;
 }
 
 function abrirModalCantidad(producto, idxExistente = null) {
   _productoModalCantidad = producto;
   _idxEdicionCarrito = idxExistente;
-  const esKg = producto.unidad_venta === "kg";
+  _unidadProductoModal = producto.unidad_venta || "pieza";
+  const info = infoUnidad(_unidadProductoModal);
+  const continua = info.tipo === "continua";
 
   document.getElementById("mcr-nombre").textContent = producto.nombre;
-  document.getElementById("mcr-precio-label").textContent = esKg
-    ? `Precio: $${producto.precio_venta.toFixed(2)} por kilogramo`
-    : `Precio: $${producto.precio_venta.toFixed(2)} c/u`;
+  document.getElementById("mcr-precio-label").textContent = continua
+    ? `Precio: $${Number(producto.precio_venta).toFixed(2)} por ${info.label.toLowerCase()}`
+    : `Precio: $${Number(producto.precio_venta).toFixed(2)} c/u`;
 
-  const cantidadPreviaKg = idxExistente !== null ? carrito[idxExistente].cantidad : (esKg ? 0.1 : 1);
+  const cantidadPrevia = idxExistente !== null
+    ? carrito[idxExistente].cantidad
+    : (continua ? (info.sub ? 0.1 : 1) : 1);
 
-  document.getElementById("mcr-toggle-unidad").style.display = esKg ? "flex" : "none";
-  if (esKg) {
-    // Si ya trae medio kilo o más, es más natural mostrarlo en kilos;
-    // si es menos de medio kilo, se ve y se escribe mejor en gramos.
-    _unidadModalCantidad = cantidadPreviaKg >= 0.5 ? "kg" : "g";
-    _configurarUnidadModalCantidad(cantidadPreviaKg);
+  const toggle = document.getElementById("mcr-toggle-unidad");
+  if (continua && info.sub) {
+    toggle.style.display = "flex";
+    document.getElementById("mcr-btn-subunidad").textContent = info.sub.menor.label;
+    document.getElementById("mcr-btn-unidad-base").textContent = info.sub.mayor.label;
+    _unidadModalCantidad = cantidadPrevia >= 0.5 ? info.sub.mayor.id : info.sub.menor.id;
+    _configurarUnidadModalCantidad(cantidadPrevia);
   } else {
-    _unidadModalCantidad = "pieza";
-    document.getElementById("mcr-sufijo-unidad").textContent = "";
+    toggle.style.display = "none";
+    _unidadModalCantidad = "base";
     const input = document.getElementById("mcr-cantidad");
-    input.step = "1";
-    input.min = "1";
-    input.value = cantidadPreviaKg;
-    document.getElementById("mcr-presets").innerHTML = "";
+    const sufijo = document.getElementById("mcr-sufijo-unidad");
+    const presets = document.getElementById("mcr-presets");
+    presets.innerHTML = "";
+    sufijo.textContent = info.corto;
+    input.step = String(info.step);
+    input.min = String(info.step);
+    input.value = cantidadPrevia;
+    (info.presets || []).forEach((val) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn-secondary";
+      b.textContent = formatearCantidad(val, _unidadProductoModal);
+      b.addEventListener("click", () => {
+        input.value = val;
+        actualizarSubtotalModalCantidad();
+      });
+      presets.appendChild(b);
+    });
   }
 
   actualizarSubtotalModalCantidad();
   document.getElementById("modal-cantidad-rapida").style.display = "flex";
 }
 
-// Deja el input, el sufijo, los presets y los botones +/- listos según la
-// unidad activa (gramos o kilos), partiendo de una cantidad ya sabida en kg.
-function _configurarUnidadModalCantidad(cantidadKg) {
+function _configurarUnidadModalCantidad(cantidadBase) {
   const input = document.getElementById("mcr-cantidad");
   const sufijo = document.getElementById("mcr-sufijo-unidad");
-  const btnGramos = document.getElementById("mcr-btn-gramos");
-  const btnKilos = document.getElementById("mcr-btn-kilos");
+  const btnMenor = document.getElementById("mcr-btn-subunidad");
+  const btnMayor = document.getElementById("mcr-btn-unidad-base");
   const presets = document.getElementById("mcr-presets");
+  const info = infoUnidad(_unidadProductoModal);
+  if (!info.sub) return;
 
-  btnGramos.classList.toggle("activo", _unidadModalCantidad === "g");
-  btnKilos.classList.toggle("activo", _unidadModalCantidad === "kg");
+  const esMenor = _unidadModalCantidad === info.sub.menor.id;
+  btnMenor.classList.toggle("activo", esMenor);
+  btnMayor.classList.toggle("activo", !esMenor);
   presets.innerHTML = "";
 
-  if (_unidadModalCantidad === "g") {
-    sufijo.textContent = "g";
-    input.step = "1";
-    input.min = "1";
-    input.value = Math.round(cantidadKg * 1000);
-    [100, 150, 200, 250].forEach((gramos) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "btn-secondary";
-      b.textContent = `${gramos} g`;
-      b.addEventListener("click", () => {
-        input.value = gramos;
-        actualizarSubtotalModalCantidad();
-      });
-      presets.appendChild(b);
+  const sub = esMenor ? info.sub.menor : info.sub.mayor;
+  sufijo.textContent = sub.id;
+  input.step = String(sub.step);
+  input.min = String(sub.step);
+  input.value = esMenor
+    ? Math.round(cantidadBase * sub.factor)
+    : Math.round(cantidadBase * 10) / 10;
+
+  (sub.presets || []).forEach((val) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn-secondary";
+    b.textContent = `${val} ${sub.id}`;
+    b.addEventListener("click", () => {
+      input.value = val;
+      actualizarSubtotalModalCantidad();
     });
-  } else {
-    sufijo.textContent = "kg";
-    input.step = "0.1";
-    input.min = "0.1";
-    // Redondeado a 1 decimal para que se vea "1" o "1.5" y no "1.003".
-    input.value = Math.round(cantidadKg * 10) / 10;
-    [0.5, 1, 1.5, 2].forEach((kilos) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "btn-secondary";
-      b.textContent = `${kilos} kg`;
-      b.addEventListener("click", () => {
-        input.value = kilos;
-        actualizarSubtotalModalCantidad();
-      });
-      presets.appendChild(b);
-    });
-  }
+    presets.appendChild(b);
+  });
 }
 
-document.getElementById("mcr-btn-gramos").addEventListener("click", () => {
-  if (_unidadModalCantidad === "g") return;
-  const cantidadKg = _cantidadEnKgDesdeInput();
-  _unidadModalCantidad = "g";
-  _configurarUnidadModalCantidad(cantidadKg);
+document.getElementById("mcr-btn-subunidad").addEventListener("click", () => {
+  const info = infoUnidad(_unidadProductoModal);
+  if (!info.sub || _unidadModalCantidad === info.sub.menor.id) return;
+  const base = _cantidadBaseDesdeInput();
+  _unidadModalCantidad = info.sub.menor.id;
+  _configurarUnidadModalCantidad(base);
   actualizarSubtotalModalCantidad();
 });
-document.getElementById("mcr-btn-kilos").addEventListener("click", () => {
-  if (_unidadModalCantidad === "kg") return;
-  const cantidadKg = _cantidadEnKgDesdeInput();
-  _unidadModalCantidad = "kg";
-  _configurarUnidadModalCantidad(cantidadKg);
+document.getElementById("mcr-btn-unidad-base").addEventListener("click", () => {
+  const info = infoUnidad(_unidadProductoModal);
+  if (!info.sub || _unidadModalCantidad === info.sub.mayor.id) return;
+  const base = _cantidadBaseDesdeInput();
+  _unidadModalCantidad = info.sub.mayor.id;
+  _configurarUnidadModalCantidad(base);
   actualizarSubtotalModalCantidad();
 });
 
 function actualizarSubtotalModalCantidad() {
-  const cantidadKg = _unidadModalCantidad === "pieza"
-    ? (parseFloat(document.getElementById("mcr-cantidad").value) || 0)
-    : _cantidadEnKgDesdeInput();
-  const subtotal = cantidadKg * _productoModalCantidad.precio_venta;
+  if (!_productoModalCantidad) return;
+  const cantidad = _cantidadBaseDesdeInput();
+  const subtotal = cantidad * Number(_productoModalCantidad.precio_venta || 0);
   document.getElementById("mcr-subtotal").textContent = subtotal.toFixed(2);
 }
 document.getElementById("mcr-cantidad").addEventListener("input", actualizarSubtotalModalCantidad);
 
 function _pasoModalCantidad() {
-  if (_unidadModalCantidad === "g") return 10;
-  if (_unidadModalCantidad === "kg") return 0.5;
-  return 1;
+  const info = infoUnidad(_unidadProductoModal);
+  if (info.tipo === "continua" && info.sub) {
+    if (_unidadModalCantidad === info.sub.menor.id) return info.sub.menor.step * 10; // saltos cómodos
+    return 0.5;
+  }
+  return info.step || 1;
 }
 document.getElementById("mcr-menos").addEventListener("click", () => {
   const input = document.getElementById("mcr-cantidad");
   const paso = _pasoModalCantidad();
   const nuevo = Math.max(paso, (parseFloat(input.value) || 0) - paso);
-  input.value = _unidadModalCantidad === "kg" ? Math.round(nuevo * 10) / 10 : nuevo;
+  const info = infoUnidad(_unidadProductoModal);
+  if (info.tipo === "continua" && info.sub && _unidadModalCantidad === info.sub.mayor.id) {
+    input.value = Math.round(nuevo * 10) / 10;
+  } else if (info.tipo === "media") {
+    input.value = Math.round(nuevo * 2) / 2;
+  } else {
+    input.value = Math.round(nuevo * 1000) / 1000;
+  }
   actualizarSubtotalModalCantidad();
 });
 document.getElementById("mcr-mas").addEventListener("click", () => {
   const input = document.getElementById("mcr-cantidad");
   const paso = _pasoModalCantidad();
   const nuevo = (parseFloat(input.value) || 0) + paso;
-  input.value = _unidadModalCantidad === "kg" ? Math.round(nuevo * 10) / 10 : nuevo;
+  const info = infoUnidad(_unidadProductoModal);
+  if (info.tipo === "continua" && info.sub && _unidadModalCantidad === info.sub.mayor.id) {
+    input.value = Math.round(nuevo * 10) / 10;
+  } else if (info.tipo === "media") {
+    input.value = Math.round(nuevo * 2) / 2;
+  } else {
+    input.value = Math.round(nuevo * 1000) / 1000;
+  }
   actualizarSubtotalModalCantidad();
 });
 document.getElementById("mcr-cancelar").addEventListener("click", () => {
   document.getElementById("modal-cantidad-rapida").style.display = "none";
+  _productoModalCantidad = null;
+  _idxEdicionCarrito = null;
 });
 document.getElementById("mcr-agregar").addEventListener("click", () => {
-  const cantidad = _unidadModalCantidad === "pieza"
-    ? parseFloat(document.getElementById("mcr-cantidad").value)
-    : _cantidadEnKgDesdeInput();
+  const cantidad = _cantidadBaseDesdeInput();
   if (!cantidad || cantidad <= 0) {
     toast("Ingresa una cantidad válida", true);
     return;
@@ -1791,7 +1875,6 @@ document.getElementById("mcr-agregar").addEventListener("click", () => {
     );
     return;
   }
-
   if (_idxEdicionCarrito !== null) {
     carrito[_idxEdicionCarrito].cantidad = cantidad;
   } else {
@@ -1809,6 +1892,7 @@ document.getElementById("mcr-agregar").addEventListener("click", () => {
   toast(`${_productoModalCantidad.nombre} agregado`);
   document.getElementById("modal-cantidad-rapida").style.display = "none";
 });
+
 
 document.getElementById("btn-cobrar").addEventListener("click", () => {
   if (carrito.length === 0) {
@@ -1971,14 +2055,18 @@ document.getElementById("btn-confirmar-venta-modal").addEventListener("click", a
 // Ajusta el formulario según si el producto se vende por pieza o a granel
 // (por kg), y si tiene o no código de barras real.
 function actualizarUIFormularioProducto() {
-  const esGranel = document.getElementById("prod-unidad-venta").value === "kg";
+  const uProd = document.getElementById("prod-unidad-venta").value;
+  const infoU = infoUnidad(uProd);
+  const esContinua = infoU.tipo === "continua";
   const tieneCodigo = document.getElementById("prod-tiene-codigo").checked;
 
-  document.getElementById("prod-precio").placeholder = esGranel ? "Precio por kilogramo *" : "Precio de venta *";
-  document.getElementById("prod-stock").placeholder = esGranel ? "Stock inicial (kg)" : "Stock inicial";
-  document.getElementById("prod-stock-min").placeholder = esGranel ? "Stock mínimo (kg)" : "Stock mínimo";
-  document.getElementById("prod-stock").step = esGranel ? "0.001" : "1";
-  document.getElementById("prod-stock-min").step = esGranel ? "0.001" : "1";
+  document.getElementById("prod-precio").placeholder = esContinua
+    ? `Precio por ${infoU.label.toLowerCase()} *`
+    : "Precio de venta *";
+  document.getElementById("prod-stock").placeholder = `Stock inicial (${infoU.corto})`;
+  document.getElementById("prod-stock-min").placeholder = `Stock mínimo (${infoU.corto})`;
+  document.getElementById("prod-stock").step = String(infoU.step);
+  document.getElementById("prod-stock-min").step = String(infoU.step);
 
   const campoCodigo = document.getElementById("prod-codigo");
   const btnScan = document.getElementById("btn-scan-alta");
@@ -2159,12 +2247,12 @@ function _renderProductos() {
   tbody.innerHTML = "";
   _recortarPorLimite(_datosProductos, "limite-productos").forEach((p) => {
     const tr = document.createElement("tr");
-    const esGranel = p.unidad_venta === "kg";
+    const esContinuaCat = esUnidadContinua(p.unidad_venta);
     tr.innerHTML = `
       <td>${p.requiere_codigo === false ? "— (interno)" : p.codigo_barras}</td>
-      <td>${p.nombre}${esGranel ? '<span class="badge badge-granel">Granel</span>' : ""}</td>
+      <td>${p.nombre}${esContinuaCat ? `<span class="badge badge-granel">${infoUnidad(p.unidad_venta).label}</span>` : (p.unidad_venta && p.unidad_venta !== "pieza" ? `<span class="badge badge-granel">${infoUnidad(p.unidad_venta).label}</span>` : "")}</td>
       <td>${p.proveedor_nombre || "—"}</td>
-      <td>$${p.precio_venta.toFixed(2)}${esGranel ? "/kg" : ""}</td>
+      <td>$${Number(p.precio_venta).toFixed(2)}${sufijoPrecioUnidad(p.unidad_venta)}</td>
       <td>${formatearCantidad(p.stock, p.unidad_venta)}</td>
       <td><span class="badge ${p.activo ? "badge-activo" : "badge-inactivo"}">${p.activo ? "Activo" : "Baja"}</span></td>
       <td>
@@ -2371,7 +2459,7 @@ async function verSugerenciaPedido(proveedorId, nombreProveedor) {
     tbody.innerHTML = "";
     datos.items.forEach((it) => {
       const alerta = it.stock <= it.stock_minimo;
-      const paso = it.unidad_venta === "pieza" ? "1" : "0.001";
+      const paso = String(pasoCantidad(it.unidad_venta));
       const tr = document.createElement("tr");
       tr.dataset.productoId = it.producto_id;
       tr.innerHTML = `

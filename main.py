@@ -557,8 +557,11 @@ def _calcular_sugerencia_pedido(db: Session, proveedor: models.Proveedor):
         # una cantidad fraccionaria, así que se redondea hacia arriba a la
         # pieza completa siguiente. Si es a granel (kg), sí se deja con
         # decimales porque el proveedor puede surtir por kilogramo parcial.
-        if p.unidad_venta == "pieza":
+        if p.unidad_venta in UNIDADES_ENTERAS:
             sugerido = math.ceil(sugerido) if sugerido > 0 else 0
+        elif p.unidad_venta in UNIDADES_MEDIAS:
+            # Redondea hacia arriba al múltiplo de 0.5 más cercano.
+            sugerido = math.ceil(sugerido * 2) / 2 if sugerido > 0 else 0
         else:
             sugerido = round(sugerido, 3)
         sugerido = max(0, sugerido)
@@ -641,20 +644,18 @@ def sugerencia_pedido_pdf(
         if not producto:
             raise HTTPException(404, "Uno de los productos ya no pertenece a este proveedor")
 
-        if producto.unidad_venta == "pieza" and it.cantidad != int(it.cantidad):
-            raise HTTPException(
-                400,
-                f"'{producto.nombre}' se vende por pieza, la cantidad debe ser un número entero",
-            )
+        _validar_cantidad_unidad(producto.unidad_venta, it.cantidad, producto.nombre)
 
         costo = producto.costo or 0
         subtotal = round(costo * it.cantidad, 2)
         total_gasto += subtotal
-        unidad = "pza" if producto.unidad_venta == "pieza" else "kg"
+        unidad = _etiqueta_unidad(producto.unidad_venta)
 
         # Cantidad legible: enteros sin decimales inútiles; kg con hasta 3.
-        if producto.unidad_venta == "pieza":
+        if producto.unidad_venta in UNIDADES_ENTERAS:
             cant_txt = f"{int(it.cantidad)} {unidad}"
+        elif producto.unidad_venta in UNIDADES_MEDIAS:
+            cant_txt = f"{round(it.cantidad, 1):g} {unidad}"
         else:
             cant_txt = f"{round(it.cantidad, 3):g} {unidad}"
 
@@ -851,8 +852,7 @@ def hacer_pedido(
         if not producto:
             raise HTTPException(404, f"Uno de los productos ya no pertenece a este proveedor")
 
-        if producto.unidad_venta == "pieza" and it.cantidad != int(it.cantidad):
-            raise HTTPException(400, f"'{producto.nombre}' se vende por pieza, la cantidad debe ser un número entero")
+        _validar_cantidad_unidad(producto.unidad_venta, it.cantidad, producto.nombre)
 
         costo_unitario = producto.costo or 0
         subtotal = round(costo_unitario * it.cantidad, 2)
@@ -898,7 +898,71 @@ def hacer_pedido(
 #  PRODUCTOS  (alta, baja, edición, consulta)
 # ============================================================
 
-UNIDADES_VENTA_VALIDAS = ("pieza", "kg")
+UNIDADES_VENTA_VALIDAS = ("pieza", "kg", "litro", "caja", "paquete", "bolsa")
+# Enteras: solo enteros. Continuas: cualquier decimal. Medias: múltiplos de 0.5.
+UNIDADES_ENTERAS = frozenset({"pieza"})
+UNIDADES_CONTINUAS = frozenset({"kg", "litro"})
+UNIDADES_MEDIAS = frozenset({"caja", "paquete", "bolsa"})
+_ETIQUETA_UNIDAD = {
+    "pieza": "pza",
+    "kg": "kg",
+    "litro": "L",
+    "caja": "caja",
+    "paquete": "paq",
+    "bolsa": "bolsa",
+}
+_ETIQUETA_UNIDAD_EXPORT = {
+    "pieza": "Pieza",
+    "kg": "Kg",
+    "litro": "Litro",
+    "caja": "Caja",
+    "paquete": "Paquete",
+    "bolsa": "Bolsa",
+}
+
+
+def _validar_cantidad_unidad(unidad: str, cantidad: float, nombre_producto: str = "") -> None:
+    """Lanza HTTPException 400 si la cantidad no es compatible con la unidad."""
+    pref = f"'{nombre_producto}' " if nombre_producto else ""
+    if unidad in UNIDADES_ENTERAS:
+        if cantidad != int(cantidad):
+            raise HTTPException(400, f"{pref}se vende por pieza, la cantidad debe ser un número entero")
+    elif unidad in UNIDADES_MEDIAS:
+        # 0.5, 1, 1.5, 2… (tolerancia flotante)
+        if abs(cantidad * 2 - round(cantidad * 2)) > 1e-6:
+            raise HTTPException(
+                400,
+                f"{pref}se vende por {unidad}, la cantidad debe ser múltiplo de 0.5 "
+                f"(ej. media {unidad}, 1, 2…)",
+            )
+
+
+def _etiqueta_unidad(unidad: str) -> str:
+    return _ETIQUETA_UNIDAD.get(unidad or "pieza", unidad or "pza")
+
+
+def _etiqueta_unidad_export(unidad: str) -> str:
+    return _ETIQUETA_UNIDAD_EXPORT.get(unidad or "pieza", (unidad or "pieza").capitalize())
+
+
+def _parse_unidad_excel(texto) -> str:
+    """Normaliza el texto de la columna 'Unidad de venta' del Excel."""
+    if texto is None:
+        return "pieza"
+    t = str(texto).strip().lower()
+    if t in ("kg", "kilogramo", "kilo", "granel", "kilos"):
+        return "kg"
+    if t in ("litro", "litros", "l", "lt", "lts"):
+        return "litro"
+    if t in ("caja", "cajas"):
+        return "caja"
+    if t in ("paquete", "paquetes", "paq"):
+        return "paquete"
+    if t in ("bolsa", "bolsas"):
+        return "bolsa"
+    if t in ("pieza", "piezas", "pza", "pzas", "unidad", "unidades"):
+        return "pieza"
+    return "pieza"
 
 
 def _generar_codigo_interno(db: Session) -> str:
@@ -923,7 +987,10 @@ def crear_producto(
     _usuario: models.Usuario = Depends(auth.requiere_permiso("productos.agregar")),
 ):
     if producto.unidad_venta not in UNIDADES_VENTA_VALIDAS:
-        raise HTTPException(400, "unidad_venta debe ser 'pieza' o 'kg'")
+        raise HTTPException(
+            400,
+            "unidad_venta debe ser: pieza, kg, litro, caja, paquete o bolsa",
+        )
 
     datos = producto.dict()
 
@@ -1215,7 +1282,7 @@ _ALIAS_COLUMNAS_PRODUCTOS = {
     "costo": ["costo"],
     "stock": ["stock", "existencia", "existencias"],
     "stock_minimo": ["stock mínimo", "stock minimo", "stock min"],
-    # Valores esperados: "Pieza" o "Kg" (si se deja en blanco, se asume "Pieza").
+    # Valores: Pieza, Kg, Litro, Caja, Paquete, Bolsa (en blanco → Pieza).
     "unidad_venta": ["unidad de venta", "unidad", "u. venta"],
     # Nombre del proveedor. Si no existe todavía, se da de alta
     # automáticamente al importar (no bloquea la importación del catálogo).
@@ -1251,6 +1318,8 @@ def plantilla_excel_productos(
     ws.append(_ENCABEZADOS_PRODUCTOS)
     ws.append(["7501234567890", "Sí", "Producto de ejemplo", "Descripción opcional", "General", 25.50, 15.00, 10, 2, "Pieza", "Coca-Cola FEMSA"])
     ws.append(["", "No", "Producto a granel de ejemplo", "Se vende suelto, sin escanear", "General", 18.00, 10.00, 5, 1, "Kg", ""])
+    ws.append(["", "No", "Leche a granel de ejemplo", "Se vende por litro", "Lácteos", 22.00, 14.00, 20, 5, "Litro", ""])
+    ws.append(["7509876543210", "Sí", "Caja de ejemplo", "Se vende por caja", "General", 120.00, 90.00, 8, 2, "Caja", ""])
     _estilizar_encabezado(ws)
     _autoajustar_columnas(ws)
 
@@ -1288,7 +1357,7 @@ def exportar_productos_excel(
             "Sí" if p.requiere_codigo else "No",
             p.nombre, p.descripcion or "", p.categoria or "",
             p.precio_venta, p.costo, p.stock, p.stock_minimo,
-            "Kg" if p.unidad_venta == "kg" else "Pieza",
+            _etiqueta_unidad_export(p.unidad_venta),
             p.proveedor.nombre if p.proveedor else "",
             "Sí" if p.activo else "No",
         ])
@@ -1395,8 +1464,7 @@ def importar_productos_excel(
         unidad_texto = valor("unidad_venta", None)
         unidad_venta = None
         if unidad_texto is not None:
-            unidad_texto = str(unidad_texto).strip().lower()
-            unidad_venta = "kg" if unidad_texto in ("kg", "kilogramo", "kilo", "granel") else "pieza"
+            unidad_venta = _parse_unidad_excel(unidad_texto)
 
         stock_excel = valor("stock", None)
         try:
@@ -1489,8 +1557,7 @@ def registrar_movimiento(
     if not producto:
         raise HTTPException(404, "Producto no encontrado")
 
-    if producto.unidad_venta == "pieza" and mov.cantidad != int(mov.cantidad):
-        raise HTTPException(400, f"'{producto.nombre}' se vende por pieza, la cantidad debe ser un número entero")
+    _validar_cantidad_unidad(producto.unidad_venta, mov.cantidad, producto.nombre)
 
     if mov.tipo in ("entrada", "salida"):
         if mov.cantidad <= 0:
@@ -1654,7 +1721,7 @@ def _generar_notificaciones(db: Session, usuario: models.Usuario) -> List[schema
             if clave in descartadas:
                 continue
             agotado = p.stock <= 0
-            unidad = "kg" if p.unidad_venta == "kg" else "pza"
+            unidad = _etiqueta_unidad(p.unidad_venta)
             notificaciones.append(schemas.NotificacionOut(
                 clave=clave,
                 tipo="stock_bajo",
@@ -1748,9 +1815,7 @@ def registrar_venta(
         if not producto.activo:
             db.rollback()
             raise HTTPException(400, f"El producto '{producto.nombre}' está dado de baja")
-        if producto.unidad_venta == "pieza" and item.cantidad != int(item.cantidad):
-            db.rollback()
-            raise HTTPException(400, f"'{producto.nombre}' se vende por pieza, no se puede vender una cantidad fraccionaria")
+        _validar_cantidad_unidad(producto.unidad_venta, item.cantidad, producto.nombre)
         if producto.stock < item.cantidad:
             db.rollback()
             raise HTTPException(400, f"Stock insuficiente de '{producto.nombre}' (disponible: {producto.stock})")

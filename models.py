@@ -66,9 +66,12 @@ class Producto(Base):
     def proveedor_nombre(self):
         return self.proveedor.nombre if self.proveedor else None
 
-    # 'pieza' (se vende por unidad entera) o 'kg' (se vende a granel, por peso).
-    # Cuando es 'kg', precio_venta es el precio por kilogramo y stock se
-    # mide en kilogramos (acepta decimales, ej. 3.250 kg).
+    # Unidad de venta del producto:
+    #   pieza   → unidad entera (1, 2, 3…)
+    #   kg      → peso a granel (decimales; precio por kilogramo)
+    #   litro   → volumen (decimales; precio por litro)
+    #   caja / paquete / bolsa → se venden por esa presentación
+    #     (aceptan medias unidades: 0.5, 1, 1.5, 2…)
     unidad_venta = Column(String, nullable=False, default="pieza")
 
     # False = el producto NO tiene código de barras real (ej. tortillas,

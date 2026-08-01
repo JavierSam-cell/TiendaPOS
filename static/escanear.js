@@ -514,11 +514,33 @@ function _pareceCodigoBarrasEsc(texto) {
   return /^[0-9]{6,}$/.test(t) || /^INT-[0-9A-F]+$/i.test(t);
 }
 
+const UNIDADES_INFO_ESC = {
+  pieza:   { label: "Pieza", corto: "pza", tipo: "entera", step: 1, presets: [1, 2, 3, 5], precioSufijo: "" },
+  kg:      { label: "Kilogramo", corto: "kg", tipo: "continua", step: 0.001, presets: null, precioSufijo: "/kg",
+             sub: { menor: { id: "g", label: "Gramos", factor: 1000, step: 1, presets: [100, 150, 200, 250] },
+                    mayor: { id: "kg", label: "Kilos", factor: 1, step: 0.1, presets: [0.5, 1, 1.5, 2] } } },
+  litro:   { label: "Litro", corto: "L", tipo: "continua", step: 0.001, presets: null, precioSufijo: "/L",
+             sub: { menor: { id: "ml", label: "ml", factor: 1000, step: 10, presets: [250, 500, 750, 1000] },
+                    mayor: { id: "L", label: "Litros", factor: 1, step: 0.1, presets: [0.5, 1, 1.5, 2] } } },
+  caja:    { label: "Caja", corto: "caja", tipo: "media", step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+  paquete: { label: "Paquete", corto: "paq", tipo: "media", step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+  bolsa:   { label: "Bolsa", corto: "bolsa", tipo: "media", step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+};
+function infoUnidadEsc(u) { return UNIDADES_INFO_ESC[u] || UNIDADES_INFO_ESC.pieza; }
+function esUnidadContinuaEsc(u) { return infoUnidadEsc(u).tipo === "continua"; }
+function sufijoPrecioEsc(u) { return infoUnidadEsc(u).precioSufijo || ""; }
+
 function formatearCantidadEsc(cantidad, unidadVenta) {
-  if (unidadVenta === "kg") {
-    return cantidad < 1 ? `${Math.round(cantidad * 1000)} g` : `${Number(cantidad).toFixed(3)} kg`;
+  const u = unidadVenta || "pieza";
+  const n = Number(cantidad) || 0;
+  if (u === "kg") return n < 1 ? `${Math.round(n * 1000)} g` : `${Number(n.toFixed(3))} kg`;
+  if (u === "litro") return n < 1 ? `${Math.round(n * 1000)} ml` : `${Number(n.toFixed(3))} L`;
+  if (u === "caja" || u === "paquete" || u === "bolsa") {
+    const et = n === 1 ? infoUnidadEsc(u).label.toLowerCase()
+      : (u === "caja" ? "cajas" : u === "paquete" ? "paquetes" : "bolsas");
+    return `${Number(n.toFixed(2))} ${et}`;
   }
-  return String(cantidad);
+  return String(n);
 }
 
 function renderResultadosBusquedaEsc(productos) {
@@ -536,9 +558,7 @@ function renderResultadosBusquedaEsc(productos) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "esc-resultado-item";
-    const precioTexto = p.unidad_venta === "kg"
-      ? `$${Number(p.precio_venta).toFixed(2)}/kg`
-      : `$${Number(p.precio_venta).toFixed(2)}`;
+    const precioTexto = `$${Number(p.precio_venta).toFixed(2)}${sufijoPrecioEsc(p.unidad_venta)}`;
     btn.innerHTML = `
       <span>
         <span class="esc-resultado-nombre">${p.nombre}</span><br>
@@ -621,11 +641,17 @@ document.getElementById("esc-buscar-input").addEventListener("keydown", (e) => {
 // ---------------------------------------------------------
 let _escProductoModal = null;
 let _escIdxEdicion = null;
-let _escUnidadModal = "g";
+let _escUnidadModal = "base";
+let _escUnidadProducto = "pieza";
 
-function _escCantidadEnKgDesdeInput() {
+function _escCantidadBaseDesdeInput() {
   const valor = parseFloat(document.getElementById("esc-mcr-cantidad").value) || 0;
-  return _escUnidadModal === "g" ? valor / 1000 : valor;
+  const info = infoUnidadEsc(_escUnidadProducto);
+  if (info.tipo === "continua" && info.sub) {
+    if (_escUnidadModal === info.sub.menor.id) return valor / info.sub.menor.factor;
+    return valor;
+  }
+  return valor;
 }
 
 function elegirProductoParaTicket(producto, idxExistente = null) {
@@ -639,28 +665,48 @@ function elegirProductoParaTicket(producto, idxExistente = null) {
 function abrirModalCantidadEsc(producto, idxExistente = null) {
   _escProductoModal = producto;
   _escIdxEdicion = idxExistente;
-  const esKg = producto.unidad_venta === "kg";
+  _escUnidadProducto = producto.unidad_venta || "pieza";
+  const info = infoUnidadEsc(_escUnidadProducto);
+  const continua = info.tipo === "continua";
+
   document.getElementById("esc-mcr-nombre").textContent = producto.nombre;
-  document.getElementById("esc-mcr-precio-label").textContent = esKg
-    ? `Precio: $${Number(producto.precio_venta).toFixed(2)} por kilogramo`
+  document.getElementById("esc-mcr-precio-label").textContent = continua
+    ? `Precio: $${Number(producto.precio_venta).toFixed(2)} por ${info.label.toLowerCase()}`
     : `Precio: $${Number(producto.precio_venta).toFixed(2)} c/u`;
 
-  const cantidadPreviaKg = idxExistente !== null
+  const cantidadPrevia = idxExistente !== null
     ? carritoEsc[idxExistente].cantidad
-    : (esKg ? 0.1 : 1);
+    : (continua ? 0.1 : 1);
 
-  document.getElementById("esc-mcr-toggle-unidad").style.display = esKg ? "flex" : "none";
-  if (esKg) {
-    _escUnidadModal = cantidadPreviaKg >= 0.5 ? "kg" : "g";
-    _escConfigurarUnidadModal(cantidadPreviaKg);
+  const toggle = document.getElementById("esc-mcr-toggle-unidad");
+  if (continua && info.sub) {
+    toggle.style.display = "flex";
+    document.getElementById("esc-mcr-btn-subunidad").textContent = info.sub.menor.label;
+    document.getElementById("esc-mcr-btn-unidad-base").textContent = info.sub.mayor.label;
+    _escUnidadModal = cantidadPrevia >= 0.5 ? info.sub.mayor.id : info.sub.menor.id;
+    _escConfigurarUnidadModal(cantidadPrevia);
   } else {
-    _escUnidadModal = "pieza";
-    document.getElementById("esc-mcr-sufijo-unidad").textContent = "";
+    toggle.style.display = "none";
+    _escUnidadModal = "base";
     const input = document.getElementById("esc-mcr-cantidad");
-    input.step = "1";
-    input.min = "1";
-    input.value = cantidadPreviaKg;
-    document.getElementById("esc-mcr-presets").innerHTML = "";
+    const sufijo = document.getElementById("esc-mcr-sufijo-unidad");
+    const presets = document.getElementById("esc-mcr-presets");
+    presets.innerHTML = "";
+    sufijo.textContent = info.corto;
+    input.step = String(info.step);
+    input.min = String(info.step);
+    input.value = cantidadPrevia;
+    (info.presets || []).forEach((val) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn-secondary";
+      b.textContent = formatearCantidadEsc(val, _escUnidadProducto);
+      b.addEventListener("click", () => {
+        input.value = val;
+        actualizarSubtotalModalEsc();
+      });
+      presets.appendChild(b);
+    });
   }
   actualizarSubtotalModalEsc();
   document.getElementById("esc-modal-cantidad").style.display = "flex";
@@ -671,79 +717,66 @@ function abrirModalCantidadEsc(producto, idxExistente = null) {
   }, 50);
 }
 
-function _escConfigurarUnidadModal(cantidadKg) {
+function _escConfigurarUnidadModal(cantidadBase) {
   const input = document.getElementById("esc-mcr-cantidad");
   const sufijo = document.getElementById("esc-mcr-sufijo-unidad");
-  const btnGramos = document.getElementById("esc-mcr-btn-gramos");
-  const btnKilos = document.getElementById("esc-mcr-btn-kilos");
+  const btnMenor = document.getElementById("esc-mcr-btn-subunidad");
+  const btnMayor = document.getElementById("esc-mcr-btn-unidad-base");
   const presets = document.getElementById("esc-mcr-presets");
-
-  btnGramos.classList.toggle("activo", _escUnidadModal === "g");
-  btnKilos.classList.toggle("activo", _escUnidadModal === "kg");
+  const info = infoUnidadEsc(_escUnidadProducto);
+  if (!info.sub) return;
+  const esMenor = _escUnidadModal === info.sub.menor.id;
+  btnMenor.classList.toggle("activo", esMenor);
+  btnMayor.classList.toggle("activo", !esMenor);
   presets.innerHTML = "";
-
-  if (_escUnidadModal === "g") {
-    sufijo.textContent = "g";
-    input.step = "1";
-    input.min = "1";
-    input.value = Math.round(cantidadKg * 1000);
-    [100, 150, 200, 250].forEach((gramos) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "btn-secondary";
-      b.textContent = `${gramos} g`;
-      b.addEventListener("click", () => {
-        input.value = gramos;
-        actualizarSubtotalModalEsc();
-      });
-      presets.appendChild(b);
+  const sub = esMenor ? info.sub.menor : info.sub.mayor;
+  sufijo.textContent = sub.id;
+  input.step = String(sub.step);
+  input.min = String(sub.step);
+  input.value = esMenor ? Math.round(cantidadBase * sub.factor) : Math.round(cantidadBase * 10) / 10;
+  (sub.presets || []).forEach((val) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn-secondary";
+    b.textContent = `${val} ${sub.id}`;
+    b.addEventListener("click", () => {
+      input.value = val;
+      actualizarSubtotalModalEsc();
     });
-  } else {
-    sufijo.textContent = "kg";
-    input.step = "0.1";
-    input.min = "0.1";
-    input.value = Math.round(cantidadKg * 10) / 10;
-    [0.5, 1, 1.5, 2].forEach((kilos) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "btn-secondary";
-      b.textContent = `${kilos} kg`;
-      b.addEventListener("click", () => {
-        input.value = kilos;
-        actualizarSubtotalModalEsc();
-      });
-      presets.appendChild(b);
-    });
-  }
+    presets.appendChild(b);
+  });
 }
 
 function actualizarSubtotalModalEsc() {
   if (!_escProductoModal) return;
-  const cantidadKg = _escUnidadModal === "pieza"
-    ? (parseFloat(document.getElementById("esc-mcr-cantidad").value) || 0)
-    : _escCantidadEnKgDesdeInput();
-  const subtotal = cantidadKg * Number(_escProductoModal.precio_venta || 0);
+  const cantidad = _escCantidadBaseDesdeInput();
+  const subtotal = cantidad * Number(_escProductoModal.precio_venta || 0);
   document.getElementById("esc-mcr-subtotal").textContent = subtotal.toFixed(2);
 }
 
 function _escPasoModal() {
-  if (_escUnidadModal === "g") return 10;
-  if (_escUnidadModal === "kg") return 0.5;
-  return 1;
+  const info = infoUnidadEsc(_escUnidadProducto);
+  if (info.tipo === "continua" && info.sub) {
+    if (_escUnidadModal === info.sub.menor.id) return info.sub.menor.step * 10;
+    return 0.5;
+  }
+  return info.step || 1;
 }
 
-document.getElementById("esc-mcr-btn-gramos").addEventListener("click", () => {
-  if (_escUnidadModal === "g") return;
-  const cantidadKg = _escCantidadEnKgDesdeInput();
-  _escUnidadModal = "g";
-  _escConfigurarUnidadModal(cantidadKg);
+document.getElementById("esc-mcr-btn-subunidad").addEventListener("click", () => {
+  const info = infoUnidadEsc(_escUnidadProducto);
+  if (!info.sub || _escUnidadModal === info.sub.menor.id) return;
+  const base = _escCantidadBaseDesdeInput();
+  _escUnidadModal = info.sub.menor.id;
+  _escConfigurarUnidadModal(base);
   actualizarSubtotalModalEsc();
 });
-document.getElementById("esc-mcr-btn-kilos").addEventListener("click", () => {
-  if (_escUnidadModal === "kg") return;
-  const cantidadKg = _escCantidadEnKgDesdeInput();
-  _escUnidadModal = "kg";
-  _escConfigurarUnidadModal(cantidadKg);
+document.getElementById("esc-mcr-btn-unidad-base").addEventListener("click", () => {
+  const info = infoUnidadEsc(_escUnidadProducto);
+  if (!info.sub || _escUnidadModal === info.sub.mayor.id) return;
+  const base = _escCantidadBaseDesdeInput();
+  _escUnidadModal = info.sub.mayor.id;
+  _escConfigurarUnidadModal(base);
   actualizarSubtotalModalEsc();
 });
 document.getElementById("esc-mcr-cantidad").addEventListener("input", actualizarSubtotalModalEsc);
@@ -751,14 +784,22 @@ document.getElementById("esc-mcr-menos").addEventListener("click", () => {
   const input = document.getElementById("esc-mcr-cantidad");
   const paso = _escPasoModal();
   const nuevo = Math.max(paso, (parseFloat(input.value) || 0) - paso);
-  input.value = _escUnidadModal === "kg" ? Math.round(nuevo * 10) / 10 : nuevo;
+  const info = infoUnidadEsc(_escUnidadProducto);
+  if (info.tipo === "media") input.value = Math.round(nuevo * 2) / 2;
+  else if (info.tipo === "continua" && info.sub && _escUnidadModal === info.sub.mayor.id)
+    input.value = Math.round(nuevo * 10) / 10;
+  else input.value = Math.round(nuevo * 1000) / 1000;
   actualizarSubtotalModalEsc();
 });
 document.getElementById("esc-mcr-mas").addEventListener("click", () => {
   const input = document.getElementById("esc-mcr-cantidad");
   const paso = _escPasoModal();
   const nuevo = (parseFloat(input.value) || 0) + paso;
-  input.value = _escUnidadModal === "kg" ? Math.round(nuevo * 10) / 10 : nuevo;
+  const info = infoUnidadEsc(_escUnidadProducto);
+  if (info.tipo === "media") input.value = Math.round(nuevo * 2) / 2;
+  else if (info.tipo === "continua" && info.sub && _escUnidadModal === info.sub.mayor.id)
+    input.value = Math.round(nuevo * 10) / 10;
+  else input.value = Math.round(nuevo * 1000) / 1000;
   actualizarSubtotalModalEsc();
 });
 document.getElementById("esc-mcr-cancelar").addEventListener("click", () => {
@@ -767,44 +808,24 @@ document.getElementById("esc-mcr-cancelar").addEventListener("click", () => {
   _escIdxEdicion = null;
 });
 document.getElementById("esc-mcr-agregar").addEventListener("click", () => {
-  const cantidad = _escUnidadModal === "pieza"
-    ? parseFloat(document.getElementById("esc-mcr-cantidad").value)
-    : _escCantidadEnKgDesdeInput();
+  const cantidad = _escCantidadBaseDesdeInput();
   if (!cantidad || cantidad <= 0) {
     toast("Ingresa una cantidad válida", true);
     return;
   }
   const p = _escProductoModal;
   if (p.stock != null && cantidad > p.stock) {
-    toast(
-      `No hay suficiente stock (disponible: ${formatearCantidadEsc(p.stock, p.unidad_venta)})`,
-      true
-    );
+    toast(`No hay suficiente stock (disponible: ${formatearCantidadEsc(p.stock, p.unidad_venta)})`, true);
     return;
   }
-
   if (_escIdxEdicion !== null) {
     carritoEsc[_escIdxEdicion].cantidad = cantidad;
   } else {
     const existente = carritoEsc.find((i) => i.codigo_barras === p.codigo_barras);
-    if (existente && p.unidad_venta !== "kg") {
+    if (existente) {
       const nueva = existente.cantidad + cantidad;
       if (p.stock != null && nueva > p.stock) {
-        toast(
-          `No hay suficiente stock (disponible: ${formatearCantidadEsc(p.stock, p.unidad_venta)})`,
-          true
-        );
-        return;
-      }
-      existente.cantidad = nueva;
-      existente.stock = p.stock;
-    } else if (existente && p.unidad_venta === "kg") {
-      const nueva = existente.cantidad + cantidad;
-      if (p.stock != null && nueva > p.stock) {
-        toast(
-          `No hay suficiente stock (disponible: ${formatearCantidadEsc(p.stock, p.unidad_venta)})`,
-          true
-        );
+        toast(`No hay suficiente stock (disponible: ${formatearCantidadEsc(p.stock, p.unidad_venta)})`, true);
         return;
       }
       existente.cantidad = nueva;
@@ -820,7 +841,6 @@ document.getElementById("esc-mcr-agregar").addEventListener("click", () => {
       });
     }
   }
-
   document.getElementById("esc-modal-cantidad").style.display = "none";
   _escProductoModal = null;
   _escIdxEdicion = null;
@@ -829,9 +849,6 @@ document.getElementById("esc-mcr-agregar").addEventListener("click", () => {
   toast(`${p.nombre} agregado al ticket`);
 });
 
-// ---------------------------------------------------------
-// Carrito local + cobro (igual criterio que pantalla Vender)
-// ---------------------------------------------------------
 function renderCarritoEsc() {
   const lista = document.getElementById("esc-carrito-lista");
   const vacio = document.getElementById("esc-carrito-vacio");
@@ -851,13 +868,12 @@ function renderCarritoEsc() {
   carritoEsc.forEach((item, idx) => {
     const subtotal = item.precio * item.cantidad;
     total += subtotal;
-    const esKg = item.unidad_venta === "kg";
     const div = document.createElement("div");
     div.className = "esc-carrito-item";
     div.innerHTML = `
       <div class="esc-carrito-nombre">${item.nombre}</div>
       <div class="esc-carrito-meta">
-        $${Number(item.precio).toFixed(2)}${esKg ? "/kg" : ""} × ${formatearCantidadEsc(item.cantidad, item.unidad_venta)}
+        $${Number(item.precio).toFixed(2)}${sufijoPrecioEsc(item.unidad_venta)} × ${formatearCantidadEsc(item.cantidad, item.unidad_venta)}
       </div>
       <div class="esc-carrito-sub">$${subtotal.toFixed(2)}</div>
       <div class="esc-carrito-acciones">

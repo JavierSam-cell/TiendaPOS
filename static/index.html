@@ -388,8 +388,12 @@
             <div class="field">
               <label for="prod-unidad-venta">Unidad de venta</label>
               <select id="prod-unidad-venta">
-                <option value="pieza">Se vende por pieza</option>
-                <option value="kg">Se vende a granel (por kilogramo)</option>
+                <option value="pieza">Pieza (unidad entera)</option>
+                <option value="kg">Kilogramo (a granel)</option>
+                <option value="litro">Litro</option>
+                <option value="caja">Caja</option>
+                <option value="paquete">Paquete</option>
+                <option value="bolsa">Bolsa</option>
               </select>
             </div>
 
@@ -1121,8 +1125,8 @@
     <h2 id="mcr-nombre">Producto</h2>
     <p id="mcr-precio-label"></p>
     <div id="mcr-toggle-unidad" class="mcr-toggle-unidad" style="display:none">
-      <button type="button" id="mcr-btn-gramos" class="mcr-unidad-btn">Gramos</button>
-      <button type="button" id="mcr-btn-kilos" class="mcr-unidad-btn">Kilos</button>
+      <button type="button" id="mcr-btn-subunidad" class="mcr-unidad-btn">Gramos</button>
+      <button type="button" id="mcr-btn-unidad-base" class="mcr-unidad-btn">Kilos</button>
     </div>
     <div id="mcr-presets" class="mcr-presets"></div>
     <div class="mcr-input-fila">
@@ -1255,7 +1259,7 @@
   if (btnMostrar) btnMostrar.addEventListener('click', alternar);
 })();
 </script>
-<script src="/static/app.js?v=5"></script>
+<script src="/static/app.js?v=8"></script>
 
 <div id="modal-confirmar" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="modal-confirmar-titulo">
   <div class="modal-box modal-confirm">
