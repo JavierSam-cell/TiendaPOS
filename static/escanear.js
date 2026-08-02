@@ -31,6 +31,24 @@ function toast(msg, isError = false) {
   setTimeout(() => (t.className = ""), 2200);
 }
 
+function activarMayusculasEnFormularios(root = document) {
+  const EXCLUIR = new Set(["password","email","number","tel","url","date","time","datetime-local","month","week","hidden","checkbox","radio","file","range","color","search"]);
+  const forzar = (el) => {
+    if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return;
+    if (el.dataset && el.dataset.noUppercase !== undefined) return;
+    const tipo = (el.type || "text").toLowerCase();
+    if (EXCLUIR.has(tipo)) return;
+    const inicio = el.selectionStart, fin = el.selectionEnd;
+    const upper = String(el.value || "").toLocaleUpperCase("es-MX");
+    if (el.value !== upper) {
+      el.value = upper;
+      try { if (inicio != null && fin != null && el.setSelectionRange) el.setSelectionRange(inicio, fin); } catch (_) {}
+    }
+  };
+  root.addEventListener("input", (e) => forzar(e.target), true);
+  root.addEventListener("blur", (e) => forzar(e.target), true);
+}
+
 let _audioCtxBeep = null;
 function sonidoBeepEscaneo() {
   try {
@@ -404,4 +422,5 @@ async function enviarCodigoAComputadora(codigo) {
 }
 
 
+activarMayusculasEnFormularios();
 cargarSesionGuardada();

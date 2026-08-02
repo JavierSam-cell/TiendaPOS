@@ -31,6 +31,34 @@ function toast(msg, isError = false) {
   setTimeout(() => (t.className = ""), 2200);
 }
 
+/** Mayúsculas en tiempo real en formularios del celular. */
+function activarMayusculasEnFormularios(root = document) {
+  const EXCLUIR = new Set([
+    "password", "email", "number", "tel", "url", "date", "time",
+    "datetime-local", "month", "week", "hidden", "checkbox", "radio",
+    "file", "range", "color", "search",
+  ]);
+  const forzar = (el) => {
+    if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return;
+    if (el.dataset && el.dataset.noUppercase !== undefined) return;
+    const tipo = (el.type || "text").toLowerCase();
+    if (EXCLUIR.has(tipo)) return;
+    const inicio = el.selectionStart;
+    const fin = el.selectionEnd;
+    const upper = String(el.value || "").toLocaleUpperCase("es-MX");
+    if (el.value !== upper) {
+      el.value = upper;
+      try {
+        if (inicio != null && fin != null && el.setSelectionRange) {
+          el.setSelectionRange(inicio, fin);
+        }
+      } catch (_) {}
+    }
+  };
+  root.addEventListener("input", (e) => forzar(e.target), true);
+  root.addEventListener("blur", (e) => forzar(e.target), true);
+}
+
 let _audioCtxBeep = null;
 function sonidoBeepEscaneo() {
   try {
@@ -106,6 +134,7 @@ function mostrarPantallaScan() {
   document.getElementById("esc-nombre-usuario").textContent =
     sesion.usuario.nombre_completo || sesion.usuario.username;
   cargarCatalogoEsc();
+  cargarUnidadesVentaEsc();
   renderCarritoEsc();
 }
 
@@ -152,14 +181,54 @@ function normalizarTexto(texto) {
 }
 
 const LIMITE_BUSQUEDA_ESC = 12;
+// En el celular se muestran 6 (no 9 como en la PC): la cuadrícula del
+// celular queda en 2 columnas por el ancho de pantalla, así que 6 arma
+// exactamente 3 filas completas sin dejar un hueco a medias, y deja más
+// espacio de pantalla para el buscador y el ticket debajo.
+const LIMITE_VENTA_RAPIDA_ESC = 6;
 let _catalogoEsc = [];
+let _topVentaRapidaEsc = [];
 
 async function cargarCatalogoEsc() {
   try {
-    _catalogoEsc = await api("/productos?activos=true");
+    const [todos, top] = await Promise.all([
+      api("/productos?activos=true"),
+      api(`/productos/venta-rapida?limite=${LIMITE_VENTA_RAPIDA_ESC}`),
+    ]);
+    _catalogoEsc = todos || [];
+    _topVentaRapidaEsc = top || [];
   } catch (e) {
     _catalogoEsc = [];
+    _topVentaRapidaEsc = [];
   }
+  renderGridVentaRapidaEsc();
+}
+
+function renderGridVentaRapidaEsc() {
+  const cont = document.getElementById("esc-venta-rapida");
+  const grid = document.getElementById("esc-grid-venta-rapida");
+  const sub = document.getElementById("esc-venta-rapida-subtitulo");
+  grid.innerHTML = "";
+
+  if (_topVentaRapidaEsc.length === 0) {
+    cont.style.display = "none";
+    return;
+  }
+  cont.style.display = "";
+  sub.textContent = `Los ${_topVentaRapidaEsc.length} más vendidos`;
+
+  _topVentaRapidaEsc.forEach((p) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn-venta-rapida";
+    const precioTexto = `$${Number(p.precio_venta).toFixed(2)}${sufijoPrecioEsc(p.unidad_venta)}`;
+    const marcaCodigo = p.requiere_codigo === false
+      ? ""
+      : `<span class="precio-rapido" style="opacity:0.65">· código</span>`;
+    btn.innerHTML = `${p.nombre}${marcaCodigo}<span class="precio-rapido">${precioTexto}</span>`;
+    btn.addEventListener("click", () => elegirProductoParaTicket(p));
+    grid.appendChild(btn);
+  });
 }
 
 function _resultadosBusquedaEsc(texto) {
@@ -178,18 +247,37 @@ function _pareceCodigoBarrasEsc(texto) {
   return /^[0-9]{6,}$/.test(t) || /^INT-[0-9A-F]+$/i.test(t);
 }
 
-const UNIDADES_INFO_ESC = {
-  pieza:   { label: "Pieza", corto: "pza", tipo: "entera", step: 1, presets: [1, 2, 3, 5], precioSufijo: "" },
-  kg:      { label: "Kilogramo", corto: "kg", tipo: "continua", step: 0.001, presets: null, precioSufijo: "/kg",
+let UNIDADES_INFO_ESC = {
+  pieza:   { label: "Pieza", plural: "Piezas", corto: "pza", tipo: "entera", step: 1, presets: [1, 2, 3, 5], precioSufijo: "" },
+  kg:      { label: "Kilogramo", plural: "Kg", corto: "kg", tipo: "continua", step: 0.001, presets: null, precioSufijo: "/kg",
              sub: { menor: { id: "g", label: "Gramos", factor: 1000, step: 1, presets: [100, 150, 200, 250] },
                     mayor: { id: "kg", label: "Kilos", factor: 1, step: 0.1, presets: [0.5, 1, 1.5, 2] } } },
-  litro:   { label: "Litro", corto: "L", tipo: "continua", step: 0.001, presets: null, precioSufijo: "/L",
+  litro:   { label: "Litro", plural: "Litros", corto: "L", tipo: "continua", step: 0.001, presets: null, precioSufijo: "/L",
              sub: { menor: { id: "ml", label: "ml", factor: 1000, step: 10, presets: [250, 500, 750, 1000] },
                     mayor: { id: "L", label: "Litros", factor: 1, step: 0.1, presets: [0.5, 1, 1.5, 2] } } },
-  caja:    { label: "Caja", corto: "caja", tipo: "media", step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
-  paquete: { label: "Paquete", corto: "paq", tipo: "media", step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
-  bolsa:   { label: "Bolsa", corto: "bolsa", tipo: "media", step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+  caja:    { label: "Caja", plural: "Cajas", corto: "caja", tipo: "media", step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+  paquete: { label: "Paquete", plural: "Paquetes", corto: "paq", tipo: "media", step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+  bolsa:   { label: "Bolsa", plural: "Bolsas", corto: "bolsa", tipo: "media", step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
 };
+
+/** Trae del backend cualquier unidad de venta personalizada (ej. "metro",
+ * "galón") agregada desde la PC y la suma a UNIDADES_INFO_ESC, para que el
+ * cuadro de cantidad del celular también sepa capturarla. */
+async function cargarUnidadesVentaEsc() {
+  try {
+    const unidades = await api("/unidades-venta");
+    const presetsPorTipo = { entera: [1, 2, 3, 5], media: [0.5, 1, 2, 3], continua: [0.5, 1, 1.5, 2, 3] };
+    const stepPorTipo = { entera: 1, media: 0.5, continua: 0.01 };
+    unidades.filter((u) => u.personalizada).forEach((u) => {
+      UNIDADES_INFO_ESC[u.clave] = {
+        label: u.nombre, plural: u.plural, corto: u.abreviatura, tipo: u.tipo,
+        step: stepPorTipo[u.tipo] ?? 1,
+        presets: presetsPorTipo[u.tipo] || [1, 2, 3],
+        precioSufijo: u.tipo === "continua" ? `/${u.abreviatura}` : "",
+      };
+    });
+  } catch (e) { /* sin conexión: se sigue con las unidades fijas */ }
+}
 function infoUnidadEsc(u) { return UNIDADES_INFO_ESC[u] || UNIDADES_INFO_ESC.pieza; }
 function esUnidadContinuaEsc(u) { return infoUnidadEsc(u).tipo === "continua"; }
 function sufijoPrecioEsc(u) { return infoUnidadEsc(u).precioSufijo || ""; }
@@ -204,7 +292,10 @@ function formatearCantidadEsc(cantidad, unidadVenta) {
       : (u === "caja" ? "cajas" : u === "paquete" ? "paquetes" : "bolsas");
     return `${Number(n.toFixed(2))} ${et}`;
   }
-  return String(n);
+  if (u === "pieza") return String(n);
+  const info = infoUnidadEsc(u);
+  const et = (n === 1) ? (info.label || u).toLowerCase() : (info.plural || info.label || u).toLowerCase();
+  return `${Number(n.toFixed(2))} ${et}`;
 }
 
 function renderResultadosBusquedaEsc(productos) {
@@ -232,8 +323,7 @@ function renderResultadosBusquedaEsc(productos) {
     `;
     btn.addEventListener("click", () => {
       document.getElementById("esc-buscar-input").value = "";
-      renderResultadosBusquedaEsc([]);
-      document.getElementById("esc-buscar-vacio").style.display = "none";
+      filtrarBusquedaEsc(""); // limpia resultados y regresa la cuadrícula de más vendidos
       // Venta local: pide cantidad y agrega al ticket del celular.
       elegirProductoParaTicket(p);
     });
@@ -243,11 +333,17 @@ function renderResultadosBusquedaEsc(productos) {
 
 function filtrarBusquedaEsc(texto) {
   const crudo = (texto || "").trim();
+  const contVentaRapida = document.getElementById("esc-venta-rapida");
   if (!crudo) {
     document.getElementById("esc-buscar-resultados").innerHTML = "";
     document.getElementById("esc-buscar-vacio").style.display = "none";
+    // Buscador vacío: se muestran de nuevo los más vendidos.
+    if (contVentaRapida) renderGridVentaRapidaEsc();
     return;
   }
+  // Mientras se escribe, los más vendidos ceden el lugar a los resultados
+  // de la búsqueda (si no, se ven dos listas de productos encimadas).
+  if (contVentaRapida) contVentaRapida.style.display = "none";
   const filtrados = _resultadosBusquedaEsc(crudo).slice(0, LIMITE_BUSQUEDA_ESC);
   renderResultadosBusquedaEsc(filtrados);
 }
@@ -582,20 +678,24 @@ document.getElementById("esc-btn-vaciar-carrito").addEventListener("click", () =
   toast("Carrito vacío");
 });
 
-// ---- Cobro rápido (mismos billetes MXN que en la PC) ----
-const DENOMINACIONES_MXN = [20, 50, 100, 200, 500];
+// ---- Cobro rápido (misma lógica de monedas + billetes MXN que en la PC) ----
+// Ver el comentario largo en app.js (_calcularOpcionesCobro) para el porqué
+// del redondeo por escalones en vez de combinar billetes al azar.
+const DENOMINACIONES_MXN = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+
+function _escalonesRedondeo(total) {
+  return total <= 20 ? [1, 5, 10, 20] : [10, 50, 100, 200, 500, 1000];
+}
 
 function _calcularOpcionesCobro(total) {
-  let opciones = DENOMINACIONES_MXN.filter((billete) => billete >= total);
-  if (opciones.length === 0) {
-    const candidatos = new Set([
-      Math.ceil(total / 500) * 500,
-      Math.ceil(total / 1000) * 1000,
-      Math.ceil(total / 500) * 500 + 500,
-    ]);
-    opciones = [...candidatos].filter((v) => v >= total).sort((a, b) => a - b);
-  }
-  return opciones.slice(0, 3);
+  if (total <= 0) return [];
+  const escalones = _escalonesRedondeo(total);
+  const candidatos = new Set();
+  escalones.forEach((paso) => {
+    const monto = Math.ceil(total / paso) * paso;
+    if (monto >= total) candidatos.add(Math.round(monto * 100) / 100);
+  });
+  return [...candidatos].sort((a, b) => a - b).slice(0, 3);
 }
 
 function _mostrarResultadoCobroEsc(total, recibido) {
@@ -721,4 +821,5 @@ document.getElementById("esc-btn-confirmar-cobro").addEventListener("click", asy
 });
 
 // Arranque
+activarMayusculasEnFormularios();
 cargarSesionGuardada();

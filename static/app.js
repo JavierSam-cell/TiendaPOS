@@ -13,6 +13,38 @@ function toast(msg, isError = false) {
   setTimeout(() => (t.className = ""), 2500);
 }
 
+/**
+ * Fuerza MAYÚSCULAS en tiempo real en inputs/textarea de formularios.
+ * Excluye password, number, email, date, tel, etc. y cualquier campo
+ * con data-no-uppercase.
+ */
+function activarMayusculasEnFormularios(root = document) {
+  const EXCLUIR = new Set([
+    "password", "email", "number", "tel", "url", "date", "time",
+    "datetime-local", "month", "week", "hidden", "checkbox", "radio",
+    "file", "range", "color", "search",
+  ]);
+  const forzar = (el) => {
+    if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return;
+    if (el.dataset && el.dataset.noUppercase !== undefined) return;
+    const tipo = (el.type || "text").toLowerCase();
+    if (EXCLUIR.has(tipo)) return;
+    const inicio = el.selectionStart;
+    const fin = el.selectionEnd;
+    const upper = String(el.value || "").toLocaleUpperCase("es-MX");
+    if (el.value !== upper) {
+      el.value = upper;
+      try {
+        if (inicio != null && fin != null && el.setSelectionRange) {
+          el.setSelectionRange(inicio, fin);
+        }
+      } catch (_) { /* algunos tipos no permiten selection */ }
+    }
+  };
+  root.addEventListener("input", (e) => forzar(e.target), true);
+  root.addEventListener("blur", (e) => forzar(e.target), true);
+}
+
 // Bip tipo escáner de supermercado al agregar un producto al carrito.
 // Se genera con Web Audio API (sin archivo de sonido externo).
 let _audioCtxBeep = null;
@@ -202,49 +234,10 @@ async function cargarConfiguracionAdmin() {
   try {
     const data = await api("/configuracion");
     document.getElementById("cfg-nombre-tienda").value = data.nombre_tienda || "";
-    configNegocio.productos_favoritos = Array.isArray(data.productos_favoritos)
-      ? data.productos_favoritos
-      : [];
-    await _renderListaFavoritosConfig();
   } catch (e) {
     toast(e.message, true);
   }
 }
-
-async function _renderListaFavoritosConfig() {
-  const cont = document.getElementById("cfg-favoritos-lista");
-  if (!cont) return;
-  let productos = [];
-  try {
-    productos = await api("/productos");
-  } catch (_) {
-    cont.innerHTML = "<p style='color:var(--text-mute)'>No se pudo cargar el catálogo.</p>";
-    return;
-  }
-  const favSet = new Set(configNegocio.productos_favoritos || []);
-  const filtro = (document.getElementById("cfg-favoritos-filtro")?.value || "").trim().toLowerCase();
-  cont.innerHTML = "";
-  productos
-    .filter((p) => p.activo !== false)
-    .filter((p) => {
-      if (!filtro) return true;
-      const t = `${p.nombre} ${p.codigo_barras || ""} ${p.categoria || ""}`.toLowerCase();
-      return t.includes(filtro);
-    })
-    .slice(0, 200)
-    .forEach((p) => {
-      const lab = document.createElement("label");
-      lab.className = "cfg-favorito-item";
-      lab.innerHTML = `<input type="checkbox" value="${p.id}" ${favSet.has(p.id) ? "checked" : ""}>
-        <span>${p.nombre}</span>
-        <span style="margin-left:auto;color:var(--text-mute);font-size:0.8rem">${p.codigo_barras || "sin código"}</span>`;
-      cont.appendChild(lab);
-    });
-}
-
-document.getElementById("cfg-favoritos-filtro")?.addEventListener("input", () => {
-  _renderListaFavoritosConfig();
-});
 
 function mostrarLogin() {
   document.getElementById("pantalla-login").style.display = "flex";
@@ -285,6 +278,8 @@ async function mostrarApp() {
   }
   cargarVentaRapida();
   cargarProveedoresSelects();
+  cargarUnidadesVenta();
+  cargarCategoriasSelect();
   actualizarReloj();
   setInterval(actualizarReloj, 1000);
 
@@ -569,10 +564,11 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (tabNueva === "venta") {
       const b = document.getElementById("buscar-venta-rapida");
       if (b) { b.focus(); if (b.value.trim()) filtrarVentaRapida(b.value); }
-      renderFavoritosVenta();
     }
-    if (tabNueva === "productos") cargarProveedoresSelects();
+    if (tabNueva === "productos") { cargarProveedoresSelects(); cargarCategoriasSelect(); }
     if (tabNueva === "catalogo") { cargarProductos(); cargarProveedoresSelects(); }
+    if (tabNueva === "unidades-venta") cargarListaUnidadesVenta();
+    if (tabNueva === "categorias") cargarListaCategorias();
     if (tabNueva === "lista-proveedores") cargarProveedores();
     if (tabNueva === "inventario") cargarProductosSinCodigoInventario();
     if (tabNueva === "movimientos") cargarMovimientos();
@@ -1105,7 +1101,14 @@ async function autocompletarDesdeEscaneo(codigo) {
     const resultado = await api(`/productos/buscar-web/${encodeURIComponent(codigo)}`);
     if (resultado.encontrado) {
       nombreInput.value = resultado.nombre;
-      if (resultado.categoria && !categoriaInput.value) categoriaInput.value = resultado.categoria;
+      if (resultado.categoria) {
+        const actual = categoriaInput.value;
+        if (!actual || actual === "General") {
+          cargarCategoriasSelect(resultado.categoria).then(() => {
+            if (categoriaInput) categoriaInput.value = resultado.categoria;
+          });
+        }
+      }
       toast(`Nombre autocompletado desde internet: ${resultado.nombre}`);
     }
   } catch (e) {
@@ -1437,18 +1440,404 @@ activarAutoDeteccion(inputCodigoVenta, (codigo) => {
 // UNIDADES DE VENTA
 // pieza = entera | kg/litro = continua | caja/paquete/bolsa = media (0.5)
 // ---------------------------------------------------------
-const UNIDADES_INFO = {
-  pieza:   { label: "Pieza",   corto: "pza",   tipo: "entera",   step: 1,   presets: [1, 2, 3, 5],     precioSufijo: "" },
-  kg:      { label: "Kilogramo", corto: "kg",  tipo: "continua", step: 0.001, presets: null,         precioSufijo: "/kg",
+let UNIDADES_INFO = {
+  pieza:   { label: "Pieza",   plural: "Piezas",   corto: "pza",   tipo: "entera",   step: 1,   presets: [1, 2, 3, 5],     precioSufijo: "" },
+  kg:      { label: "Kilogramo", plural: "Kg", corto: "kg",  tipo: "continua", step: 0.001, presets: null,         precioSufijo: "/kg",
              sub: { menor: { id: "g", label: "Gramos", factor: 1000, step: 1, presets: [100, 150, 200, 250] },
                     mayor: { id: "kg", label: "Kilos", factor: 1, step: 0.1, presets: [0.5, 1, 1.5, 2] } } },
-  litro:   { label: "Litro",   corto: "L",     tipo: "continua", step: 0.001, presets: null,         precioSufijo: "/L",
+  litro:   { label: "Litro",   plural: "Litros",   corto: "L",     tipo: "continua", step: 0.001, presets: null,         precioSufijo: "/L",
              sub: { menor: { id: "ml", label: "ml", factor: 1000, step: 10, presets: [250, 500, 750, 1000] },
                     mayor: { id: "L", label: "Litros", factor: 1, step: 0.1, presets: [0.5, 1, 1.5, 2] } } },
-  caja:    { label: "Caja",    corto: "caja",  tipo: "media",    step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
-  paquete: { label: "Paquete", corto: "paq",   tipo: "media",    step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
-  bolsa:   { label: "Bolsa",   corto: "bolsa", tipo: "media",    step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+  caja:    { label: "Caja",    plural: "Cajas",    corto: "caja",  tipo: "media",    step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+  paquete: { label: "Paquete", plural: "Paquetes", corto: "paq",   tipo: "media",    step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
+  bolsa:   { label: "Bolsa",   plural: "Bolsas",   corto: "bolsa", tipo: "media",    step: 0.5, presets: [0.5, 1, 2, 3], precioSufijo: "" },
 };
+
+/**
+ * Convierte una unidad de venta personalizada (la que trae el backend,
+ * ej. { clave: "metro", nombre: "Metro", plural: "Metros", abreviatura: "m",
+ * tipo: "continua" }) en una entrada de UNIDADES_INFO, generando presets
+ * razonables según el tipo — así el cuadro de cantidad de Vender queda
+ * dinámico sin tocar código cada vez que se agrega una unidad nueva:
+ *   entera   -> 1, 2, 3, 5
+ *   media    -> 0.5, 1, 2, 3
+ *   continua -> 0.5, 1, 1.5, 2, 3 (con decimales libres en el input)
+ */
+function _infoDesdeUnidadPersonalizada(u) {
+  const presetsPorTipo = {
+    entera: [1, 2, 3, 5],
+    media: [0.5, 1, 2, 3],
+    continua: [0.5, 1, 1.5, 2, 3],
+  };
+  const stepPorTipo = { entera: 1, media: 0.5, continua: 0.01 };
+  return {
+    label: u.nombre,
+    plural: u.plural,
+    corto: u.abreviatura,
+    tipo: u.tipo,
+    step: stepPorTipo[u.tipo] ?? 1,
+    presets: presetsPorTipo[u.tipo] || [1, 2, 3],
+    precioSufijo: u.tipo === "continua" ? `/${u.abreviatura}` : "",
+  };
+}
+
+/** Trae del backend las unidades de venta (fijas + personalizadas) y
+ * completa UNIDADES_INFO con las que el usuario haya agregado, y llena
+ * el selector de "Unidad de venta" del alta de producto. Se llama al
+ * iniciar la app y otra vez cada vez que se agrega una unidad nueva. */
+async function cargarUnidadesVenta() {
+  let unidades;
+  try {
+    unidades = await api("/unidades-venta");
+  } catch (e) {
+    return; // sin conexión: se sigue con las unidades fijas de siempre
+  }
+
+  // Actualiza UNIDADES_INFO con TODO lo que venga del backend (sistema +
+  // personalizadas). kg/litro conservan el toggle gramos/kilos si siguen
+  // siendo tipo continua.
+  const SUB_KG = UNIDADES_INFO.kg && UNIDADES_INFO.kg.sub ? UNIDADES_INFO.kg.sub : null;
+  const SUB_LITRO = UNIDADES_INFO.litro && UNIDADES_INFO.litro.sub ? UNIDADES_INFO.litro.sub : null;
+
+  unidades.forEach((u) => {
+    const base = _infoDesdeUnidadPersonalizada(u);
+    if (u.clave === "kg" && u.tipo === "continua" && SUB_KG) base.sub = SUB_KG;
+    if (u.clave === "litro" && u.tipo === "continua" && SUB_LITRO) base.sub = SUB_LITRO;
+    UNIDADES_INFO[u.clave] = base;
+  });
+
+  const select = document.getElementById("prod-unidad-venta");
+  if (select) {
+    const seleccionActual = select.value;
+    select.innerHTML = "";
+    unidades.forEach((u) => {
+      const opt = document.createElement("option");
+      opt.value = u.clave;
+      const etiquetaTipo = { entera: "enteros", media: "medias", continua: "decimales" }[u.tipo] || u.tipo;
+      opt.textContent = `${u.nombre} (${etiquetaTipo})`;
+      select.appendChild(opt);
+    });
+    if (seleccionActual && [...select.options].some((o) => o.value === seleccionActual)) {
+      select.value = seleccionActual;
+    }
+  }
+}
+
+function escaparHtmlUnidad(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+const _TIPO_UNIDAD_LABEL = {
+  entera: "Solo enteros",
+  media: "Medias unidades",
+  continua: "Decimales libres",
+};
+
+async function cargarListaUnidadesVenta() {
+  const tbody = document.getElementById("tabla-unidades-venta");
+  const vacio = document.getElementById("unidades-vacio");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  let unidades = [];
+  try {
+    unidades = await api("/unidades-venta");
+  } catch (e) {
+    toast(e.message || "No se pudieron cargar las unidades", true);
+    return;
+  }
+  if (!unidades.length) {
+    if (vacio) vacio.style.display = "block";
+    return;
+  }
+  if (vacio) vacio.style.display = "none";
+
+  unidades.forEach((u) => {
+    const tr = document.createElement("tr");
+    const origen = u.personalizada ? "Personalizada" : "Sistema";
+    const enUso = Number(u.en_uso || 0);
+    tr.innerHTML = `
+      <td><strong>${escaparHtmlUnidad(u.nombre)}</strong><br><span class="texto-muted">${escaparHtmlUnidad(u.clave)}</span></td>
+      <td>${escaparHtmlUnidad(u.plural || "")}</td>
+      <td>${escaparHtmlUnidad(u.abreviatura || "")}</td>
+      <td>${_TIPO_UNIDAD_LABEL[u.tipo] || u.tipo}</td>
+      <td>${origen}</td>
+      <td>${enUso} producto${enUso === 1 ? "" : "s"}</td>
+      <td class="acciones-celda">
+        ${tienePermiso("unidades.editar", "productos.editar") ? `<button type="button" class="btn-secondary btn-sm" data-editar-unidad="${u.id}">Editar</button>` : ""}
+        ${tienePermiso("unidades.eliminar") ? `<button type="button" class="btn-secondary btn-sm danger" data-borrar-unidad="${u.id}" data-nombre="${escaparHtmlUnidad(u.nombre)}" data-en-uso="${enUso}">Eliminar</button>` : ""}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll("[data-editar-unidad]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = parseInt(btn.dataset.editarUnidad, 10);
+      const u = unidades.find((x) => x.id === id);
+      if (u) abrirModalUnidad(u);
+    });
+  });
+  tbody.querySelectorAll("[data-borrar-unidad]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = parseInt(btn.dataset.borrarUnidad, 10);
+      const nombre = btn.dataset.nombre || "esta unidad";
+      const enUso = parseInt(btn.dataset.enUso || "0", 10);
+      if (enUso > 0) {
+        toast(`No se puede eliminar: ${enUso} producto(s) usan "${nombre}". Cámbiales la unidad primero.`, true);
+        return;
+      }
+      const ok = await confirmarAccion({
+        titulo: `¿Eliminar la unidad "${nombre}"?`,
+        mensaje: "Esta acción no se puede deshacer. Los selectores de unidad se actualizarán al instante.",
+        textoAceptar: "Eliminar",
+        peligro: true,
+      });
+      if (!ok) return;
+      try {
+        await api(`/unidades-venta/${id}`, { method: "DELETE" });
+        toast(`Unidad "${nombre}" eliminada`);
+        await cargarUnidadesVenta();
+        await cargarListaUnidadesVenta();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  });
+}
+
+function abrirModalUnidad(unidad = null) {
+  const editando = !!(unidad && unidad.id);
+  document.getElementById("nu-id").value = editando ? String(unidad.id) : "";
+  document.getElementById("nu-titulo").textContent = editando ? "Editar unidad de venta" : "Nueva unidad de venta";
+  document.getElementById("nu-subtitulo").textContent = editando
+    ? "Puedes cambiar el nombre, el plural, la abreviatura o cómo se cuenta. La clave interna no cambia, así los productos que ya la usan siguen vinculados."
+    : "Agrega una unidad que no esté en la lista (metros, galones, yardas, docenas…). En cuanto la guardes, aparecerá en el selector de unidad y en el cuadro de cantidad al vender.";
+  document.getElementById("nu-nombre").value = editando ? (unidad.nombre || "") : "";
+  document.getElementById("nu-plural").value = editando ? (unidad.plural || "") : "";
+  document.getElementById("nu-abreviatura").value = editando ? (unidad.abreviatura || "") : "";
+  document.getElementById("nu-tipo").value = editando ? (unidad.tipo || "continua") : "continua";
+  document.getElementById("nu-guardar").textContent = editando ? "Guardar cambios" : "Guardar unidad";
+  document.getElementById("modal-nueva-unidad").style.display = "flex";
+  document.getElementById("nu-nombre").focus();
+}
+
+document.getElementById("btn-nueva-unidad")?.addEventListener("click", () => abrirModalUnidad(null));
+document.getElementById("btn-nueva-unidad-lista")?.addEventListener("click", () => abrirModalUnidad(null));
+document.getElementById("nu-cancelar")?.addEventListener("click", () => {
+  document.getElementById("modal-nueva-unidad").style.display = "none";
+  document.getElementById("nu-id").value = "";
+});
+document.getElementById("nu-guardar")?.addEventListener("click", async () => {
+  const nombre = document.getElementById("nu-nombre").value.trim();
+  if (!nombre) {
+    toast("Ponle un nombre a la unidad", true);
+    return;
+  }
+  const idEdicion = document.getElementById("nu-id").value.trim();
+  const payload = {
+    nombre,
+    plural: document.getElementById("nu-plural").value.trim() || undefined,
+    abreviatura: document.getElementById("nu-abreviatura").value.trim() || undefined,
+    tipo: document.getElementById("nu-tipo").value,
+  };
+  try {
+    let resultado;
+    if (idEdicion) {
+      resultado = await api(`/unidades-venta/${idEdicion}`, { method: "PUT", body: JSON.stringify(payload) });
+      toast(`Unidad "${resultado.nombre}" actualizada`);
+    } else {
+      resultado = await api("/unidades-venta", { method: "POST", body: JSON.stringify(payload) });
+      toast(`Unidad "${resultado.nombre}" agregada`);
+      const select = document.getElementById("prod-unidad-venta");
+      if (select) {
+        await cargarUnidadesVenta();
+        select.value = resultado.clave;
+      }
+    }
+    await cargarUnidadesVenta();
+    if (typeof actualizarUIFormularioProducto === "function") actualizarUIFormularioProducto();
+    document.getElementById("modal-nueva-unidad").style.display = "none";
+    document.getElementById("nu-id").value = "";
+    if (document.getElementById("tab-unidades-venta")?.classList.contains("active")) {
+      await cargarListaUnidadesVenta();
+    }
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+
+
+
+// ---------------------------------------------------------
+// CATEGORÍAS DE PRODUCTO
+// ---------------------------------------------------------
+async function cargarCategoriasSelect(seleccionPreferida = null) {
+  const select = document.getElementById("prod-categoria");
+  if (!select) return;
+  let categorias = [];
+  try {
+    categorias = await api("/categorias");
+  } catch (e) {
+    return;
+  }
+  const actual = seleccionPreferida != null ? seleccionPreferida : select.value;
+  select.innerHTML = "";
+  if (!categorias.length) {
+    const opt = document.createElement("option");
+    opt.value = "General";
+    opt.textContent = "General";
+    select.appendChild(opt);
+  } else {
+    categorias.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.nombre;
+      opt.textContent = c.nombre;
+      select.appendChild(opt);
+    });
+  }
+  if (actual && [...select.options].some((o) => o.value === actual)) {
+    select.value = actual;
+  } else if (actual) {
+    // Categoría legacy no listada todavía: la agregamos al selector.
+    const opt = document.createElement("option");
+    opt.value = actual;
+    opt.textContent = actual;
+    select.appendChild(opt);
+    select.value = actual;
+  }
+}
+
+async function cargarListaCategorias() {
+  const tbody = document.getElementById("tabla-categorias");
+  const vacio = document.getElementById("categorias-vacio");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  let categorias = [];
+  try {
+    categorias = await api("/categorias");
+  } catch (e) {
+    toast(e.message || "No se pudieron cargar las categorías", true);
+    return;
+  }
+  if (!categorias.length) {
+    if (vacio) vacio.style.display = "block";
+    return;
+  }
+  if (vacio) vacio.style.display = "none";
+
+  categorias.forEach((c) => {
+    const tr = document.createElement("tr");
+    const enUso = Number(c.en_uso || 0);
+    const puedeEditar = tienePermiso("categorias.editar");
+    const puedeEliminar = tienePermiso("categorias.eliminar");
+    let acciones = "";
+    if (puedeEditar) {
+      acciones += `<button type="button" class="btn-secondary btn-sm" data-editar-cat="${c.id}">Editar</button> `;
+    }
+    if (puedeEliminar) {
+      acciones += `<button type="button" class="btn-secondary btn-sm danger" data-borrar-cat="${c.id}" data-nombre="${escaparHtmlUnidad(c.nombre)}" data-en-uso="${enUso}">Eliminar</button>`;
+    }
+    if (!acciones) acciones = "—";
+    tr.innerHTML = `
+      <td><strong>${escaparHtmlUnidad(c.nombre)}</strong></td>
+      <td>${enUso} producto${enUso === 1 ? "" : "s"}</td>
+      <td class="acciones-celda">${acciones}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll("[data-editar-cat]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = parseInt(btn.dataset.editarCat, 10);
+      const c = categorias.find((x) => x.id === id);
+      if (c) abrirModalCategoria(c);
+    });
+  });
+  tbody.querySelectorAll("[data-borrar-cat]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = parseInt(btn.dataset.borrarCat, 10);
+      const nombre = btn.dataset.nombre || "esta categoría";
+      const enUso = parseInt(btn.dataset.enUso || "0", 10);
+      if (enUso > 0) {
+        toast(`No se puede eliminar: ${enUso} producto(s) usan "${nombre}". Cámbiales la categoría primero.`, true);
+        return;
+      }
+      const ok = await confirmarAccion({
+        titulo: `¿Eliminar la categoría "${nombre}"?`,
+        mensaje: "Esta acción no se puede deshacer.",
+        textoAceptar: "Eliminar",
+        peligro: true,
+      });
+      if (!ok) return;
+      try {
+        await api(`/categorias/${id}`, { method: "DELETE" });
+        toast(`Categoría "${nombre}" eliminada`);
+        await cargarCategoriasSelect();
+        await cargarListaCategorias();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  });
+}
+
+function abrirModalCategoria(categoria = null) {
+  const editando = !!(categoria && categoria.id);
+  document.getElementById("nc-id").value = editando ? String(categoria.id) : "";
+  document.getElementById("nc-titulo").textContent = editando ? "Editar categoría" : "Nueva categoría";
+  document.getElementById("nc-subtitulo").textContent = editando
+    ? "Al renombrar, todos los productos de esta categoría se actualizarán automáticamente."
+    : "Agrega una categoría para organizar tus productos (Bebidas, Lácteos, Limpieza…).";
+  document.getElementById("nc-nombre").value = editando ? (categoria.nombre || "") : "";
+  document.getElementById("nc-guardar").textContent = editando ? "Guardar cambios" : "Guardar categoría";
+  document.getElementById("modal-nueva-categoria").style.display = "flex";
+  document.getElementById("nc-nombre").focus();
+}
+
+document.getElementById("btn-nueva-categoria")?.addEventListener("click", () => abrirModalCategoria(null));
+document.getElementById("btn-nueva-categoria-lista")?.addEventListener("click", () => abrirModalCategoria(null));
+document.getElementById("nc-cancelar")?.addEventListener("click", () => {
+  document.getElementById("modal-nueva-categoria").style.display = "none";
+  document.getElementById("nc-id").value = "";
+});
+document.getElementById("nc-guardar")?.addEventListener("click", async () => {
+  const nombre = document.getElementById("nc-nombre").value.trim();
+  if (!nombre) {
+    toast("Ponle un nombre a la categoría", true);
+    return;
+  }
+  const idEdicion = document.getElementById("nc-id").value.trim();
+  try {
+    let resultado;
+    if (idEdicion) {
+      resultado = await api(`/categorias/${idEdicion}`, {
+        method: "PUT",
+        body: JSON.stringify({ nombre }),
+      });
+      toast(`Categoría "${resultado.nombre}" actualizada`);
+    } else {
+      resultado = await api("/categorias", {
+        method: "POST",
+        body: JSON.stringify({ nombre }),
+      });
+      toast(`Categoría "${resultado.nombre}" agregada`);
+    }
+    document.getElementById("modal-nueva-categoria").style.display = "none";
+    document.getElementById("nc-id").value = "";
+    await cargarCategoriasSelect(resultado.nombre);
+    if (document.getElementById("tab-categorias")?.classList.contains("active")) {
+      await cargarListaCategorias();
+    }
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
 
 function infoUnidad(unidad) {
   return UNIDADES_INFO[unidad] || UNIDADES_INFO.pieza;
@@ -1468,7 +1857,14 @@ function formatearCantidad(cantidad, unidadVenta) {
     const etiqueta = (n === 1) ? info.label.toLowerCase() : (u === "caja" ? "cajas" : u === "paquete" ? "paquetes" : "bolsas");
     return `${Number(n.toFixed(2))} ${etiqueta}`;
   }
-  return String(n);
+  if (u === "pieza") return String(n);
+  // Unidad personalizada (metro, galón, docena…): usa singular/plural
+  // que capturó el usuario al crearla, con hasta 2 decimales.
+  const info = infoUnidad(u);
+  const etiqueta = (n === 1)
+    ? (info.label || u).toLowerCase()
+    : (info.plural || info.label || u).toLowerCase();
+  return `${Number(n.toFixed(2))} ${etiqueta}`;
 }
 
 function sufijoPrecioUnidad(unidadVenta) {
@@ -1569,66 +1965,6 @@ const LIMITE_BUSQUEDA_VENTA = 12;
 let _catalogoVenta = [];   // catálogo activo completo (búsqueda)
 let _topVentaRapida = [];  // 9 más vendidos (con y sin código)
 
-
-async function renderFavoritosVenta() {
-  const bloque = document.getElementById("bloque-favoritos-venta");
-  const grid = document.getElementById("grid-favoritos-venta");
-  if (!bloque || !grid) return;
-  const ids = configNegocio.productos_favoritos || [];
-  if (!ids.length) {
-    bloque.style.display = "none";
-    grid.innerHTML = "";
-    return;
-  }
-  let catalogo = _catalogoVenta;
-  if (!catalogo || !catalogo.length) {
-    try {
-      catalogo = await api("/productos");
-      _catalogoVenta = catalogo.filter((p) => p.activo !== false);
-    } catch (_) {
-      bloque.style.display = "none";
-      return;
-    }
-  }
-  const porId = new Map(catalogo.map((p) => [p.id, p]));
-  grid.innerHTML = "";
-  let mostrados = 0;
-  ids.forEach((id) => {
-    const p = porId.get(id);
-    if (!p || p.activo === false) return;
-    mostrados++;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn-venta-rapida";
-    const precio = `$${Number(p.precio_venta).toFixed(2)}${sufijoPrecioUnidad(p.unidad_venta)}`;
-    btn.innerHTML = `<span class="btn-venta-nombre">${p.nombre}</span><span class="btn-venta-precio">${precio}</span>`;
-    btn.addEventListener("click", () => _agregarProductoDesdeVentaRapida(p));
-    grid.appendChild(btn);
-  });
-  bloque.style.display = mostrados ? "block" : "none";
-}
-
-function _claveUltimaCantidad(producto) {
-  const cod = producto.codigo_barras || producto.id || producto.nombre;
-  return `pos_ultima_cant_${cod}`;
-}
-
-function _leerUltimaCantidad(producto) {
-  try {
-    const v = parseFloat(localStorage.getItem(_claveUltimaCantidad(producto)));
-    return v > 0 ? v : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function _guardarUltimaCantidad(producto, cantidad) {
-  if (!producto || !esUnidadContinua(producto.unidad_venta)) return;
-  try {
-    localStorage.setItem(_claveUltimaCantidad(producto), String(cantidad));
-  } catch (_) {}
-}
-
 async function cargarVentaRapida() {
   const grid = document.getElementById("grid-venta-rapida");
   try {
@@ -1652,7 +1988,6 @@ async function cargarVentaRapida() {
       return;
     }
     renderGridVentaRapida(_topVentaRapida, { modo: "top" });
-    await renderFavoritosVenta();
   } catch (e) {
     _catalogoVenta = [];
     _topVentaRapida = [];
@@ -1823,15 +2158,9 @@ function abrirModalCantidad(producto, idxExistente = null) {
     ? `Precio: $${Number(producto.precio_venta).toFixed(2)} por ${info.label.toLowerCase()}`
     : `Precio: $${Number(producto.precio_venta).toFixed(2)} c/u`;
 
-  let cantidadPrevia;
-  if (idxExistente !== null) {
-    cantidadPrevia = carrito[idxExistente].cantidad;
-  } else if (continua) {
-    const ultima = _leerUltimaCantidad(producto);
-    cantidadPrevia = ultima != null ? ultima : 0.1;
-  } else {
-    cantidadPrevia = 1;
-  }
+  const cantidadPrevia = idxExistente !== null
+    ? carrito[idxExistente].cantidad
+    : (continua ? (info.sub ? 0.1 : 1) : 1);
 
   const toggle = document.getElementById("mcr-toggle-unidad");
   if (continua && info.sub) {
@@ -1934,6 +2263,7 @@ function _pasoModalCantidad() {
     if (_unidadModalCantidad === info.sub.menor.id) return info.sub.menor.step * 10; // saltos cómodos
     return 0.5;
   }
+  if (info.tipo === "continua") return 0.5; // unidad continua personalizada (metro, galón…)
   return info.step || 1;
 }
 document.getElementById("mcr-menos").addEventListener("click", () => {
@@ -1994,14 +2324,10 @@ document.getElementById("mcr-agregar").addEventListener("click", () => {
       unidad_venta: _productoModalCantidad.unidad_venta || "pieza",
     });
   }
-  _guardarUltimaCantidad(_productoModalCantidad, cantidad);
   renderCarrito();
   sonidoBeepEscaneo();
   toast(`${_productoModalCantidad.nombre} agregado`);
   document.getElementById("modal-cantidad-rapida").style.display = "none";
-  // Tras agregar, deja listo el buscador para el siguiente producto
-  const buscador = document.getElementById("buscar-venta-rapida");
-  if (buscador && _tabVentaActiva()) { buscador.focus(); }
 });
 
 
@@ -2029,27 +2355,42 @@ function abrirModalConfirmarVenta() {
   document.getElementById("modal-confirmar-venta").style.display = "flex";
 }
 
-// ---- Cobro rápido: sugiere con qué billete es más probable que pague el
-// cliente (según los billetes que circulan en México: 20, 50, 100, 200 y
-// 500; el de 1000 casi no se usa en una tienda y solo se ofrece si no
-// alcanza con los demás) y calcula el cambio al instante. ----
-const DENOMINACIONES_MXN = [20, 50, 100, 200, 500];
+// ---- Cobro rápido: sugiere con qué monedas/billetes es más probable que
+// pague el cliente y calcula el cambio al instante.
+//
+// Monedas y billetes que circulan en México (las monedas también cuentan,
+// no solo los billetes):
+const DENOMINACIONES_MXN = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+
+// Las sugerencias NO se arman combinando billetes al azar (p.ej. un billete
+// de $50 + uno de $20 = $70 no tiene sentido como sugerencia: nadie "piensa"
+// en pagar así). En cambio, la gente redondea de forma natural al siguiente
+// múltiplo "redondo" que tenga sentido según el tamaño del total:
+//   - Totales chicos (≤ $20): redondea a la moneda/billete más cercano
+//     (1, 2, 5, 10 o 20 pesos).
+//   - Totales más grandes: redondea a la siguiente decena, luego a la
+//     siguiente cincuentena, centena, etc. ($137 -> $140, $150, $200).
+// Esto reproduce cómo paga la gente en la vida real y evita combinaciones
+// raras como $70 para un total de $25.50, aunque sí sigue permitiendo
+// sugerencias naturales como pagar con dos billetes de $20 ($40) cuando el
+// redondeo cae justo ahí.
+function _escalonesRedondeo(total) {
+  // Ojo: la moneda de $2 se deja fuera de los escalones a propósito. Si se
+  // usara como "paso" de redondeo generaría montos poco naturales (p.ej.
+  // para un total de $15 sugeriría $16, que nadie ofrece para pagar). Sigue
+  // existiendo como moneda válida en DENOMINACIONES_MXN para dar cambio.
+  return total <= 20 ? [1, 5, 10, 20] : [10, 50, 100, 200, 500, 1000];
+}
 
 function _calcularOpcionesCobro(total) {
-  let opciones = DENOMINACIONES_MXN.filter((billete) => billete >= total);
-  if (opciones.length === 0) {
-    // El total supera el billete más alto de uso común (500): en vez de
-    // ofrecer un solo billete que no alcanzaría a cubrir la compra, se
-    // sugieren montos redondeados hacia arriba que sí la cubren (varios
-    // billetes grandes juntos, como haría el cliente en la práctica).
-    const candidatos = new Set([
-      Math.ceil(total / 500) * 500,
-      Math.ceil(total / 1000) * 1000,
-      Math.ceil(total / 500) * 500 + 500,
-    ]);
-    opciones = [...candidatos].filter((v) => v >= total).sort((a, b) => a - b);
-  }
-  return opciones.slice(0, 3);
+  if (total <= 0) return [];
+  const escalones = _escalonesRedondeo(total);
+  const candidatos = new Set();
+  escalones.forEach((paso) => {
+    const monto = Math.ceil(total / paso) * paso;
+    if (monto >= total) candidatos.add(Math.round(monto * 100) / 100);
+  });
+  return [...candidatos].sort((a, b) => a - b).slice(0, 3);
 }
 
 function _prepararCobroRapido(total) {
@@ -2059,38 +2400,23 @@ function _prepararCobroRapido(total) {
   inputRecibido.value = "";
   _mostrarResultadoCobro(total, null);
 
-  // 1) Siempre: pago exacto (primer botón, resaltado)
-  const chipExacto = _crearChipCobro(total, total, "Pago exacto");
-  chipExacto.classList.add("chip-exacto");
-  contenedor.appendChild(chipExacto);
+  const opciones = _calcularOpcionesCobro(total);
+  // Si el total no coincide con ninguno de los billetes sugeridos (lo más
+  // común, ya que casi ningún total cae justo en $100, $200, etc.), se
+  // agrega primero un chip de "Pago exacto" con el monto tal cual, para el
+  // cliente que paga con el cambio justo o por transferencia/tarjeta puesta
+  // como efectivo exacto.
+  const yaHayExacto = opciones.some((billete) => Math.abs(billete - total) < 0.005);
+  if (!yaHayExacto) {
+    const chipExacto = _crearChipCobro(total, total, "Pago exacto");
+    contenedor.appendChild(chipExacto);
+  }
 
-  // 2) Billetes típicos de México que cubren el total (y un poco más)
-  const vistos = new Set([Math.round(total * 100) / 100]);
-  const billetes = [20, 50, 100, 200, 500, 1000];
-  billetes.forEach((billete) => {
-    if (billete < total - 0.001) return;
-    const key = billete;
-    if (vistos.has(key)) return;
-    vistos.add(key);
+  opciones.forEach((billete) => {
     const cambio = billete - total;
-    contenedor.appendChild(
-      _crearChipCobro(billete, total, cambio > 0.005 ? `Cambio $${cambio.toFixed(2)}` : "Pago exacto")
-    );
+    const chip = _crearChipCobro(billete, total, cambio > 0 ? `Cambio $${cambio.toFixed(2)}` : "Pago exacto");
+    contenedor.appendChild(chip);
   });
-
-  // 3) Si el total es > 500, montos redondeados útiles
-  _calcularOpcionesCobro(total).forEach((monto) => {
-    const key = Math.round(monto * 100) / 100;
-    if (vistos.has(key)) return;
-    vistos.add(key);
-    const cambio = monto - total;
-    contenedor.appendChild(
-      _crearChipCobro(monto, total, cambio > 0.005 ? `Cambio $${cambio.toFixed(2)}` : "Pago exacto")
-    );
-  });
-
-  // Enfoca el input por si van a escribir otra cantidad
-  setTimeout(() => inputRecibido.focus(), 50);
 }
 
 function _crearChipCobro(monto, total, textoSecundario) {
@@ -2308,7 +2634,11 @@ function editarProducto(p) {
   document.getElementById("prod-codigo").disabled = true; // el código no se edita
   document.getElementById("prod-nombre").value = p.nombre;
   document.getElementById("prod-descripcion").value = p.descripcion || "";
-  document.getElementById("prod-categoria").value = p.categoria || "";
+  const catProd = p.categoria || "General";
+  cargarCategoriasSelect(catProd).then(() => {
+    const sel = document.getElementById("prod-categoria");
+    if (sel) sel.value = catProd;
+  });
   document.getElementById("prod-precio").value = p.precio_venta;
   document.getElementById("prod-costo").value = p.costo;
   document.getElementById("prod-stock").value = p.stock;
@@ -3339,6 +3669,18 @@ const ACCIONES_POR_MODULO = {
     { clave: "productos.baja", label: "Dar de baja / reactivar" },
     { clave: "productos.importar", label: "Importar / exportar Excel" },
   ],
+  unidades: [
+    { clave: "unidades.ver", label: "Ver unidades de venta" },
+    { clave: "unidades.agregar", label: "Agregar unidades de venta" },
+    { clave: "unidades.editar", label: "Editar unidades de venta" },
+    { clave: "unidades.eliminar", label: "Eliminar unidades de venta" },
+  ],
+  categorias: [
+    { clave: "categorias.ver", label: "Ver categorías" },
+    { clave: "categorias.agregar", label: "Agregar categorías" },
+    { clave: "categorias.editar", label: "Editar categorías" },
+    { clave: "categorias.eliminar", label: "Eliminar categorías" },
+  ],
   inventario: [
     { clave: "inventario.ver", label: "Ver movimientos y alertas de stock" },
     { clave: "inventario.movimiento", label: "Registrar entradas / salidas / ajustes" },
@@ -3367,6 +3709,8 @@ const ACCIONES_POR_MODULO = {
 
 const NOMBRES_MODULO_PERMISO = {
   productos: "Productos",
+  unidades: "Unidades de venta",
+  categorias: "Categorías",
   inventario: "Inventario",
   proveedores: "Proveedores",
   gastos: "Gastos",
@@ -3661,106 +4005,15 @@ document.getElementById("form-configuracion").addEventListener("submit", async (
     toast("Escribe el nombre de la tienda", true);
     return;
   }
-  const favIds = [...document.querySelectorAll("#cfg-favoritos-lista input[type=checkbox]:checked")]
-    .map((el) => parseInt(el.value, 10))
-    .filter((n) => !isNaN(n))
-    .slice(0, 12);
   try {
     const data = await api("/configuracion", {
       method: "PUT",
-      body: JSON.stringify({ nombre_tienda: nombre, productos_favoritos: favIds }),
+      body: JSON.stringify({ nombre_tienda: nombre }),
     });
     aplicarNombreTienda(data.nombre_tienda);
-    configNegocio.productos_favoritos = Array.isArray(data.productos_favoritos)
-      ? data.productos_favoritos
-      : favIds;
-    await renderFavoritosVenta();
     toast("Configuración guardada");
   } catch (err) {
     toast(err.message || "No se pudo guardar", true);
-  }
-});
-
-
-// ---------------------------------------------------------
-// ATAJOS DE TECLADO (hora pico en Vender)
-// F2 = buscar | F12 / Enter (sin foco en input) = cobrar | Esc = cerrar modales
-// ---------------------------------------------------------
-function _tabVentaActiva() {
-  return document.getElementById("tab-venta")?.classList.contains("active");
-}
-function _modalVisible(id) {
-  const el = document.getElementById(id);
-  if (!el) return false;
-  const d = el.style.display;
-  return d === "flex" || d === "block" || el.classList.contains("mostrar");
-}
-document.addEventListener("keydown", (e) => {
-  // No interceptar si escribe en inputs de otras pestañas (salvo atajos globales útiles)
-  const tag = (e.target && e.target.tagName) || "";
-  const enInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target?.isContentEditable;
-
-  if (e.key === "Escape") {
-    if (_modalVisible("modal-confirmar-venta")) {
-      e.preventDefault();
-      cerrarModalConfirmarVenta();
-      return;
-    }
-    if (_modalVisible("modal-cantidad-rapida")) {
-      e.preventDefault();
-      document.getElementById("modal-cantidad-rapida").style.display = "none";
-      return;
-    }
-    if (_modalVisible("modal-confirmar")) {
-      // deja el modal de confirmar genérico
-      return;
-    }
-  }
-
-  if (!_tabVentaActiva()) return;
-
-  if (e.key === "F2") {
-    e.preventDefault();
-    const b = document.getElementById("buscar-venta-rapida");
-    if (b) { b.focus(); b.select(); }
-    return;
-  }
-
-  if (e.key === "F12") {
-    e.preventDefault();
-    if (_modalVisible("modal-confirmar-venta")) {
-      document.getElementById("btn-confirmar-venta-modal")?.click();
-    } else if (carrito.length > 0) {
-      abrirModalConfirmarVenta();
-    } else {
-      toast("El carrito está vacío", true);
-    }
-    return;
-  }
-
-  // Enter en input de recibido: confirmar si alcanza
-  if (e.key === "Enter" && e.target?.id === "input-recibido") {
-    e.preventDefault();
-    const total = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
-    const recibido = parseFloat(e.target.value);
-    const esEfectivo = document.getElementById("metodo-pago").value === "efectivo";
-    if (esEfectivo && !isNaN(recibido) && recibido + 0.001 < total) {
-      toast(`Faltan $${(total - recibido).toFixed(2)}`, true);
-      return;
-    }
-    document.getElementById("btn-confirmar-venta-modal")?.click();
-    return;
-  }
-
-  // Enter fuera de buscador/modal cantidad: cobrar
-  if (e.key === "Enter" && !enInput && !_modalVisible("modal-cantidad-rapida")) {
-    if (_modalVisible("modal-confirmar-venta")) {
-      e.preventDefault();
-      document.getElementById("btn-confirmar-venta-modal")?.click();
-    } else if (carrito.length > 0) {
-      e.preventDefault();
-      abrirModalConfirmarVenta();
-    }
   }
 });
 
@@ -4116,6 +4369,7 @@ function inicializarFiltrosFecha() {
 
 // Arranque
 // ---------------------------------------------------------
+activarMayusculasEnFormularios();
 inicializarFiltrosFecha();
 cargarConfiguracionPublica();
 cargarSesionGuardada();

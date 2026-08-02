@@ -36,6 +36,42 @@ class Proveedor(Base):
     productos = relationship("Producto", back_populates="proveedor")
 
 
+class Categoria(Base):
+    """
+    Categorías de productos (ej. Bebidas, Lácteos, Abarrotes).
+    El producto guarda el nombre de la categoría como texto en
+    productos.categoria; al renombrar aquí se actualizan los productos.
+    """
+    __tablename__ = "categorias"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String, unique=True, index=True, nullable=False)
+    fecha_creacion = Column(DateTime, default=datetime.now)
+
+
+class UnidadVenta(Base):
+    """
+    Unidades de venta personalizadas que el usuario agrega desde el alta
+    de producto (ej. "metro", "galón") además de las unidades fijas del
+    sistema (pieza, kg, litro, caja, paquete, bolsa).
+
+    tipo define cómo se valida/captura la cantidad, igual que las unidades
+    fijas:
+      entera   → solo enteros (1, 2, 3…)
+      media    → múltiplos de 0.5 (0.5, 1, 1.5, 2…)
+      continua → cualquier decimal (0.75, 1.2, 3.333…)
+    """
+    __tablename__ = "unidades_venta"
+
+    id = Column(Integer, primary_key=True, index=True)
+    clave = Column(String, unique=True, index=True, nullable=False)  # ej. "metro"
+    nombre = Column(String, nullable=False)      # ej. "Metro"
+    plural = Column(String, nullable=False)      # ej. "Metros"
+    abreviatura = Column(String, nullable=False)  # ej. "m"
+    tipo = Column(String, nullable=False, default="entera")  # entera|media|continua
+    fecha_creacion = Column(DateTime, default=datetime.now)
+
+
 class Producto(Base):
     __tablename__ = "productos"
 

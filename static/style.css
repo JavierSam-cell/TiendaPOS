@@ -8,41 +8,45 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap');
 
 :root {
-  /* --- Color --- */
-  --ink: #0b1220;          /* tinta — sidebar / marca / login */
-  --ink-2: #131f38;        /* tinta secundaria (degradados) */
-  --ink-soft: #1b2c4d;     /* hover/active sobre tinta */
-  --ink-line: rgba(255,255,255,0.09);
+  /* --- Color (POS comercial — inspirado en terminales Square/Toast) --- */
+  --ink: #0a1020;          /* sidebar / marca */
+  --ink-2: #121c34;
+  --ink-soft: #1a2744;
+  --ink-line: rgba(255,255,255,0.08);
 
-  --bg: #f3f5f9;           /* fondo del área de trabajo */
-  --paper: #ffffff;        /* tarjetas / recibo */
-  --line: #e2e6ee;
-  --line-soft: #edf0f5;
-  --text: #0f1728;
-  --text-mute: #667085;
-  --text-faint: #98a2b3;
+  --bg: #eef1f6;           /* área de trabajo más limpia */
+  --paper: #ffffff;
+  --line: #dce1eb;
+  --line-soft: #ebf0f6;
+  --text: #0c1424;
+  --text-mute: #5b677a;
+  --text-faint: #8b95a7;
 
-  --accent: #0e9d6e;       /* verde "caja registradora" — cobrar/confirmar */
-  --accent-dark: #0a7c56;
-  --accent-darker: #075f42;
-  --accent-soft: #e3f7ef;
+  --accent: #0d9b6a;       /* verde caja — cobrar */
+  --accent-dark: #0a7d55;
+  --accent-darker: #066544;
+  --accent-soft: #e2f6ed;
+  --accent-glow: rgba(13,155,106,0.22);
 
-  --danger: #dc3d34;
-  --danger-dark: #b52d26;
-  --danger-soft: #fbe9e8;
+  --danger: #e03a32;
+  --danger-dark: #b92d27;
+  --danger-soft: #fdeceb;
 
-  --warning: #d88a11;
-  --warning-soft: #fcf0dd;
+  --warning: #d8890f;
+  --warning-soft: #fdf3e0;
+
+  --info: #2563eb;
+  --info-soft: #e8effe;
 
   /* --- Elevación / forma --- */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --shadow-xs: 0 1px 2px rgba(15,23,42,0.05);
-  --shadow-sm: 0 2px 6px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
-  --shadow-md: 0 10px 26px rgba(15,23,42,0.09), 0 2px 6px rgba(15,23,42,0.05);
-  --shadow-lg: 0 24px 48px rgba(7,11,22,0.16);
-  --shadow-ink: 0 26px 60px rgba(5,9,18,0.5);
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --shadow-xs: 0 1px 2px rgba(12,20,36,0.04);
+  --shadow-sm: 0 2px 8px rgba(12,20,36,0.06), 0 1px 2px rgba(12,20,36,0.04);
+  --shadow-md: 0 12px 28px rgba(12,20,36,0.08), 0 2px 6px rgba(12,20,36,0.04);
+  --shadow-lg: 0 28px 56px rgba(7,11,22,0.14);
+  --shadow-ink: 0 28px 64px rgba(5,9,18,0.48);
 
   /* --- Tipografía --- */
   --font-ui: 'Manrope', -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
@@ -568,12 +572,65 @@ main { padding: 26px 32px 44px; max-width: 1180px; width: 100%; margin: 0 auto; 
 
 #tab-venta.active {
   display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: 22px;
+  grid-template-columns: 1.12fr 0.88fr;
+  gap: 24px;
   align-items: start;
+  max-width: 1280px;
 }
-@media (max-width: 860px) {
+@media (max-width: 960px) {
   #tab-venta.active { grid-template-columns: 1fr; }
+}
+
+/* Vender: tipografía y controles más grandes (terminal de caja) */
+#tab-venta .panel h2 {
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+}
+#tab-venta #buscar-venta-rapida {
+  font-size: 1.15rem;
+  padding: 16px 18px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+#tab-venta .venta-rapida-subtitulo {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-mute);
+  margin: 4px 0 12px;
+}
+#tab-venta .total-venta {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+#tab-venta #btn-cobrar.btn-grande {
+  padding: 18px 20px;
+  font-size: 1.2rem;
+  border-radius: var(--radius-md);
+  letter-spacing: 0.02em;
+}
+#tab-venta .linea-pago select,
+#tab-venta #metodo-pago {
+  font-size: 1.05rem;
+  padding: 12px 14px;
+  font-weight: 600;
+}
+#tabla-carrito {
+  font-size: 0.95rem;
+}
+#tabla-carrito th {
+  font-size: 0.72rem;
+  padding: 12px 8px;
+}
+#tabla-carrito td {
+  padding: 12px 8px;
+  font-weight: 600;
+}
+#tabla-carrito td:first-child {
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 /* ===================== PANELES / TARJETAS ===================== */
@@ -669,14 +726,15 @@ main { padding: 26px 32px 44px; max-width: 1180px; width: 100%; margin: 0 auto; 
 input, select {
   display: block;
   width: 100%;
-  padding: 11px 13px;
+  padding: 12px 14px;
   margin-bottom: 10px;
   border: 1.5px solid var(--line);
   border-radius: var(--radius-sm);
-  font-size: 0.95rem;
-  font-family: var(--font-ui);
   background: var(--paper);
   color: var(--text);
+  font-size: 0.98rem;
+  font-family: var(--font-ui);
+  font-weight: 600;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 input::placeholder { color: var(--text-faint); }
@@ -693,6 +751,11 @@ input::placeholder { color: var(--text-faint); }
 }
 .field input, .field select { margin-bottom: 0; }
 .field-req { color: var(--danger); }
+
+.fila-unidad-venta { display: flex; gap: 8px; align-items: stretch; }
+.fila-unidad-venta select { flex: 1; }
+.fila-unidad-venta #btn-nueva-unidad { white-space: nowrap; padding: 0 14px; }
+.modal-subtexto { color: var(--text-mute); font-size: 0.85rem; margin: -4px 0 14px; }
 
 .password-field {
   position: relative;
@@ -755,21 +818,34 @@ h2 svg { vertical-align: -3px; margin-right: 6px; }
 .manual-add { margin-top: 12px; }
 .manual-add input { margin-bottom: 0; width: 100%; }
 
-/* ===================== TABLAS GENERALES ===================== */
+/* ===================== TABLAS GENERALES (estilo POS comercial) ===================== */
 
-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.88rem; }
-th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--line-soft); }
-th {
-  color: var(--text-faint);
-  font-weight: 700;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: #fafbfd;
-  border-bottom: 1px solid var(--line);
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: var(--shadow-xs);
 }
-tbody tr { transition: background 0.1s; }
-tbody tr:hover { background: #fafbfd; }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
+.table-wrap table { margin-top: 0; }
+th, td { text-align: left; padding: 13px 14px; border-bottom: 1px solid var(--line-soft); }
+th {
+  color: var(--text-mute);
+  font-weight: 800;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: #f5f7fb;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+tbody tr { transition: background 0.12s; }
+tbody tr:nth-child(even) { background: #fafbfd; }
+tbody tr:hover { background: var(--accent-soft); }
+tbody tr:last-child td { border-bottom: none; }
 
 .badge { padding: 4px 11px; border-radius: 999px; font-size: 0.71rem; font-weight: 700; letter-spacing: 0.01em; display: inline-flex; align-items: center; gap: 5px; }
 .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -1467,7 +1543,7 @@ tbody tr:hover { background: #fafbfd; }
 .grid-venta-rapida {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 12px;
 }
 @media (max-width: 600px) {
   .grid-venta-rapida { grid-template-columns: repeat(2, 1fr); }
@@ -1476,25 +1552,34 @@ tbody tr:hover { background: #fafbfd; }
   .grid-venta-rapida { grid-template-columns: 1fr; }
 }
 .btn-venta-rapida {
-  background: var(--paper);
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
   border: 1.5px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 12px 10px;
+  border-radius: var(--radius-md);
+  padding: 16px 12px;
+  min-height: 78px;
   cursor: pointer;
   font-family: var(--font-ui);
-  font-weight: 700;
-  font-size: 0.85rem;
+  font-weight: 800;
+  font-size: 0.95rem;
   text-align: center;
-  line-height: 1.35;
-  transition: border-color 0.15s, background 0.15s;
+  line-height: 1.3;
+  color: var(--text);
+  box-shadow: var(--shadow-xs);
+  transition: border-color 0.15s, background 0.15s, transform 0.12s, box-shadow 0.15s;
 }
-.btn-venta-rapida:hover { background: var(--accent-soft); border-color: var(--accent); }
+.btn-venta-rapida:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px var(--accent-glow);
+}
+.btn-venta-rapida:active { transform: translateY(0); }
 .btn-venta-rapida .precio-rapido {
   display: block;
-  margin-top: 3px;
+  margin-top: 6px;
   font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 0.78rem;
+  font-weight: 700;
+  font-size: 0.9rem;
   color: var(--accent-darker);
 }
 .aviso-vacio-rapida { color: var(--text-mute); font-size: 0.85rem; margin: 0; }
@@ -1861,64 +1946,87 @@ tbody tr:hover { background: #fafbfd; }
 }
 
 
-/* ---- Cobro rápido / favoritos / atajos venta ---- */
-.total-venta-grande {
-  font-size: 1.85rem !important;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  padding: 10px 0 4px;
+/* Unidades de venta — lista de gestión */
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.82rem;
 }
-.atajos-venta-hint {
-  color: var(--text-mute);
-  font-size: 0.78rem;
-  margin: -6px 0 12px;
+.texto-muted {
+  color: var(--text-muted, #6b7280);
+  font-size: 0.8rem;
 }
-.atajos-venta-hint kbd {
-  display: inline-block;
-  padding: 1px 5px;
-  border: 1px solid var(--border, #ccc);
-  border-radius: 4px;
-  font-size: 0.72rem;
-  background: var(--bg-soft, #f4f4f5);
-}
-.grid-favoritos-venta .btn-venta-rapida {
-  border-color: var(--accent);
-  background: var(--accent-soft, #eef6ff);
-  font-weight: 700;
-}
-.chip-billete {
-  min-width: 88px !important;
-  padding: 10px 12px !important;
-}
-.chip-billete .chip-billete-monto {
-  font-size: 1.1rem !important;
-}
-.chip-billete.chip-exacto {
-  border-color: var(--ok, #16a34a);
-  background: #ecfdf5;
-}
-.cobro-resultado.cambio-ok {
-  font-size: 1.15rem;
-  font-weight: 700;
-}
-.cfg-favoritos-lista {
-  max-height: 280px;
-  overflow-y: auto;
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 8px;
-  padding: 8px;
+.acciones-celda {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.cfg-favorito-item {
-  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  cursor: pointer;
 }
-.cfg-favorito-item:hover { background: var(--bg-soft, #f4f4f5); }
-.cfg-favorito-item input { width: 16px; height: 16px; }
+.acciones-celda .btn-secondary.danger {
+  color: var(--danger, #dc3d34);
+  border-color: color-mix(in srgb, var(--danger, #dc3d34) 35%, transparent);
+}
+
+
+/* =========================================================
+   POS COMERCIAL — refinamientos finales (Vender + tablas)
+   ========================================================= */
+
+#tab-venta .panel {
+  padding: 22px 24px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.panel-recibo {
+  border: 1.5px solid var(--line);
+  box-shadow: var(--shadow-md);
+}
+
+.panel-recibo h2 {
+  font-size: 1rem !important;
+  letter-spacing: 0.04em;
+}
+
+/* Total destacado como en terminal de cobro */
+.total-venta {
+  background: linear-gradient(180deg, #f7fbf9 0%, #eef8f3 100%);
+  margin: 10px -8px 0;
+  padding: 16px 12px !important;
+  border-radius: var(--radius-sm);
+  border-top: 2px solid var(--accent) !important;
+}
+
+#btn-cobrar {
+  box-shadow: 0 4px 14px var(--accent-glow), 0 1px 2px rgba(10,124,86,0.15);
+}
+#btn-cobrar:hover {
+  box-shadow: 0 8px 22px var(--accent-glow);
+}
+
+/* Botones de acción en tablas */
+table .btn-secondary,
+table .btn-primary,
+table button {
+  padding: 7px 12px;
+  font-size: 0.8rem;
+  border-radius: 8px;
+}
+
+/* Cards de métricas (reportes / corte) un poco más premium */
+.card, .stat-card {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* Login más comercial */
+#pantalla-login, .login-card {
+  border-radius: var(--radius-lg);
+}
+
+/* Mayúsculas visuales en placeholders de texto */
+input[type="text"]::placeholder,
+textarea::placeholder {
+  text-transform: none;
+  font-weight: 500;
+  opacity: 0.85;
+}

@@ -106,13 +106,15 @@
           Vender
         </button>
 
-        <div class="nav-grupo" data-permiso-any="productos.ver,productos.agregar,productos.editar,productos.baja,productos.importar">
+        <div class="nav-grupo" data-permiso-any="productos.ver,productos.agregar,productos.editar,productos.baja,productos.importar,unidades.ver,unidades.agregar,unidades.editar,unidades.eliminar,categorias.ver,categorias.agregar,categorias.editar,categorias.eliminar">
           <button type="button" class="nav-grupo-toggle" data-grupo="grupo-productos">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
             <span>Productos</span>
             <svg class="nav-grupo-flecha" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div class="nav-grupo-items" id="grupo-productos">
+            <button class="tab-btn" data-tab="categorias" data-titulo="Categorías" data-permiso-any="categorias.ver,categorias.agregar,categorias.editar,categorias.eliminar">Categorías</button>
+            <button class="tab-btn" data-tab="unidades-venta" data-titulo="Unidades de venta" data-permiso-any="unidades.ver,unidades.agregar,unidades.editar,unidades.eliminar,productos.agregar,productos.editar">Unidades de venta</button>
             <button class="tab-btn" data-tab="productos" data-titulo="Agregar producto" data-permiso="productos.agregar">Agregar producto</button>
             <button class="tab-btn" data-tab="catalogo" data-titulo="Catálogo de productos" data-permiso-any="productos.ver,productos.editar,productos.baja,productos.importar">Catálogo de productos</button>
           </div>
@@ -290,7 +292,6 @@
           <!-- Buscador global: nombre o código (lo más usado cuando no se puede escanear) -->
           <div class="panel" id="panel-venta-rapida">
             <h2>Buscar producto</h2>
-            <p class="atajos-venta-hint">Atajos: <kbd>F2</kbd> buscar · <kbd>F12</kbd> / <kbd>Enter</kbd> cobrar · <kbd>Esc</kbd> cerrar</p>
             <div class="field">
               <label for="buscar-venta-rapida">Nombre o código de barras</label>
               <input
@@ -299,10 +300,6 @@
                 autocomplete="off"
                 autofocus
               >
-            </div>
-            <div id="bloque-favoritos-venta" style="display:none">
-              <p class="venta-rapida-subtitulo">Favoritos (acceso rápido)</p>
-              <div id="grid-favoritos-venta" class="grid-venta-rapida grid-favoritos-venta"></div>
             </div>
             <p id="venta-rapida-subtitulo" class="venta-rapida-subtitulo">Los 9 más vendidos</p>
             <div id="grid-venta-rapida" class="grid-venta-rapida"></div>
@@ -367,7 +364,7 @@
             <tbody></tbody>
           </table>
 </div>
-          <div class="total-venta total-venta-grande">Total: $<span id="total-carrito">0.00</span></div>
+          <div class="total-venta">Total: $<span id="total-carrito">0.00</span></div>
 
           <div class="linea-pago">
             <label for="metodo-pago">Método de pago</label>
@@ -395,14 +392,17 @@
 
             <div class="field">
               <label for="prod-unidad-venta">Unidad de venta</label>
-              <select id="prod-unidad-venta">
-                <option value="pieza">Pieza (unidad entera)</option>
-                <option value="kg">Kilogramo (a granel)</option>
-                <option value="litro">Litro</option>
-                <option value="caja">Caja</option>
-                <option value="paquete">Paquete</option>
-                <option value="bolsa">Bolsa</option>
-              </select>
+              <div class="fila-unidad-venta">
+                <select id="prod-unidad-venta">
+                  <option value="pieza">Pieza (unidad entera)</option>
+                  <option value="kg">Kilogramo (a granel)</option>
+                  <option value="litro">Litro</option>
+                  <option value="caja">Caja</option>
+                  <option value="paquete">Paquete</option>
+                  <option value="bolsa">Bolsa</option>
+                </select>
+                <button type="button" id="btn-nueva-unidad" class="btn-secondary" title="Agregar una unidad de venta nueva (metros, galones, etc.)" data-permiso-any="unidades.agregar,productos.agregar">+ Unidad</button>
+              </div>
             </div>
 
             <label class="checkbox-inline">
@@ -432,7 +432,12 @@
             </div>
             <div class="field">
               <label for="prod-categoria">Categoría</label>
-              <input id="prod-categoria" placeholder="Categoría">
+              <div class="fila-unidad-venta">
+                <select id="prod-categoria">
+                  <option value="General">General</option>
+                </select>
+                <button type="button" id="btn-nueva-categoria" class="btn-secondary" title="Agregar una categoría nueva" data-permiso="categorias.agregar">+ Categoría</button>
+              </div>
             </div>
             <div class="field">
               <label for="prod-precio">Precio de venta <span class="field-req">*</span></label>
@@ -473,6 +478,62 @@
       </section>
 
       <!-- ===================== TAB CATALOGO ===================== -->
+      <section id="tab-unidades-venta" class="tab-content">
+        <div class="card">
+          <div class="card-header-row">
+            <h2>Unidades de venta</h2>
+            <button type="button" id="btn-nueva-unidad-lista" class="btn-primary" data-permiso-any="unidades.agregar,productos.agregar">+ Nueva unidad</button>
+          </div>
+          <p class="modal-subtexto" style="margin-top:0">
+            Aquí puedes ver, editar o eliminar cualquier unidad (incluidas pieza, kg, litro, caja, etc.).
+            Si una unidad está en uso por productos, no se puede borrar hasta cambiarles la unidad.
+          </p>
+          <div class="tabla-wrap">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Plural</th>
+                  <th>Abreviatura</th>
+                  <th>Cómo se cuenta</th>
+                  <th>Origen</th>
+                  <th>En uso</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tabla-unidades-venta"></tbody>
+            </table>
+          </div>
+          <p id="unidades-vacio" class="vacio" style="display:none">No hay unidades de venta registradas.</p>
+        </div>
+      </section>
+
+      <section id="tab-categorias" class="tab-content">
+        <div class="card">
+          <div class="card-header-row">
+            <h2>Categorías de producto</h2>
+            <button type="button" id="btn-nueva-categoria-lista" class="btn-primary" data-permiso="categorias.agregar">+ Nueva categoría</button>
+          </div>
+          <p class="modal-subtexto" style="margin-top:0">
+            Organiza tus productos por categoría (Bebidas, Lácteos, Abarrotes…).
+            Si una categoría está en uso, no se puede borrar hasta cambiar los productos a otra.
+          </p>
+          <div class="tabla-wrap">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>En uso</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tabla-categorias"></tbody>
+            </table>
+          </div>
+          <p id="categorias-vacio" class="vacio" style="display:none">No hay categorías registradas.</p>
+        </div>
+      </section>
+
       <section id="tab-catalogo" class="tab-content">
         <div class="panel">
           <div class="titulo-con-filtro">
@@ -1024,14 +1085,6 @@
           Aparece en el menú lateral, el login y los encabezados de los reportes.
         </p>
       </div>
-      <div class="field" style="margin-top:18px">
-        <label>Favoritos en pantalla Vender (máx. 12)</label>
-        <p style="color:var(--text-mute); font-size:0.8rem; margin:0 0 8px;">
-          Productos con botón fijo para cobros rápidos en hora pico. Marca los que más vendes.
-        </p>
-        <input id="cfg-favoritos-filtro" placeholder="Filtrar productos…" autocomplete="off" style="margin-bottom:8px">
-        <div id="cfg-favoritos-lista" class="cfg-favoritos-lista"></div>
-      </div>
       <button type="submit" class="btn-primary">Guardar configuración</button>
     </form>
   </div>
@@ -1159,6 +1212,57 @@
   </div>
 </div>
 
+
+<!-- ===================== MODAL NUEVA / EDITAR CATEGORÍA ===================== -->
+<div id="modal-nueva-categoria" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h2 id="nc-titulo">Nueva categoría</h2>
+    <p id="nc-subtitulo" class="modal-subtexto">Agrega una categoría para organizar tus productos (Bebidas, Lácteos, Limpieza…).</p>
+    <input type="hidden" id="nc-id" value="">
+    <div class="field">
+      <label for="nc-nombre">Nombre <span class="field-req">*</span></label>
+      <input id="nc-nombre" placeholder="Ej. Bebidas, Lácteos, Abarrotes" required>
+    </div>
+    <div class="modal-acciones">
+      <button type="button" id="nc-cancelar" class="btn-secondary">Cancelar</button>
+      <button type="button" id="nc-guardar" class="btn-primary">Guardar categoría</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODAL NUEVA UNIDAD DE VENTA ===================== -->
+<div id="modal-nueva-unidad" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h2 id="nu-titulo">Nueva unidad de venta</h2>
+    <p id="nu-subtitulo" class="modal-subtexto">Agrega una unidad que no esté en la lista (metros, galones, yardas, docenas…). En cuanto la guardes, aparecerá en el selector de unidad y en el cuadro de cantidad al vender.</p>
+    <input type="hidden" id="nu-id" value="">
+    <div class="field">
+      <label for="nu-nombre">Nombre <span class="field-req">*</span></label>
+      <input id="nu-nombre" placeholder="Ej. Metro, Galón, Docena" required>
+    </div>
+    <div class="field">
+      <label for="nu-plural">Plural (opcional)</label>
+      <input id="nu-plural" placeholder="Ej. Metros, Galones, Docenas">
+    </div>
+    <div class="field">
+      <label for="nu-abreviatura">Abreviatura (opcional)</label>
+      <input id="nu-abreviatura" placeholder="Ej. m, gal, doc" maxlength="8">
+    </div>
+    <div class="field">
+      <label for="nu-tipo">¿Cómo se cuenta?</label>
+      <select id="nu-tipo">
+        <option value="entera">Solo enteros (1, 2, 3… ej. docena, par)</option>
+        <option value="media">Medias unidades (0.5, 1, 1.5, 2… ej. caja, paquete)</option>
+        <option value="continua">Decimales libres (0.75, 1.2… ej. metro, galón, yarda)</option>
+      </select>
+    </div>
+    <div class="modal-acciones">
+      <button type="button" id="nu-cancelar" class="btn-secondary">Cancelar</button>
+      <button type="button" id="nu-guardar" class="btn-primary">Guardar unidad</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== MODAL CONFIRMAR VENTA ===================== -->
 <div id="modal-confirmar-venta" class="modal-overlay" style="display:none">
   <div class="modal-box">
@@ -1167,9 +1271,9 @@
     <div class="modal-total">Total: $<span id="modal-venta-total">0.00</span></div>
 
     <div id="cobro-rapido" class="cobro-rapido" style="display:none">
-      <label>Cobro express — toca el billete o “Pago exacto”</label>
+      <label>Cobro rápido (efectivo)</label>
       <div id="billetes-sugeridos" class="billetes-sugeridos"></div>
-      <label for="input-recibido" class="cobro-manual-label">Otra cantidad recibida (Enter confirma si alcanza)</label>
+      <label for="input-recibido" class="cobro-manual-label">Otra cantidad recibida</label>
       <div class="cobro-manual">
         <span>$</span>
         <input type="number" id="input-recibido" placeholder="Otra cantidad recibida" step="0.01" min="0" inputmode="decimal">
@@ -1275,7 +1379,7 @@
   if (btnMostrar) btnMostrar.addEventListener('click', alternar);
 })();
 </script>
-<script src="/static/app.js?v=9"></script>
+<script src="/static/app.js?v=8"></script>
 
 <div id="modal-confirmar" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="modal-confirmar-titulo">
   <div class="modal-box modal-confirm">

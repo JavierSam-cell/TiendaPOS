@@ -3,8 +3,8 @@ Sistema de Punto de Venta - API principal
 Ejecutar con:  uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 """
 import io
-import json
 import math
+import re
 import secrets
 import httpx
 from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Request
@@ -133,6 +133,10 @@ def crear_admin_por_defecto():
             print("   clave:    admin123")
             print(" ¡Cámbiala en cuanto entres al sistema!")
             print("=" * 60)
+        _sembrar_unidades_sistema(db)
+        _cargar_unidades_personalizadas(db)
+        _sembrar_categorias(db)
+        _sembrar_permisos_default_cajero(db)
     finally:
         db.close()
 
@@ -373,7 +377,6 @@ def mis_permisos(
 
 _CONFIG_DEFAULTS = {
     "nombre_tienda": "Mi Tienda",
-    "productos_favoritos": "[]",  # JSON: lista de product IDs
 }
 
 
@@ -384,14 +387,6 @@ def _leer_config(db: Session) -> dict:
     for f in filas:
         if f.clave in cfg and f.valor is not None and str(f.valor).strip() != "":
             cfg[f.clave] = str(f.valor).strip()
-    # productos_favoritos se expone como lista de enteros al API
-    try:
-        favs = json.loads(cfg.get("productos_favoritos") or "[]")
-        if not isinstance(favs, list):
-            favs = []
-        cfg["productos_favoritos"] = [int(x) for x in favs if str(x).isdigit() or isinstance(x, int)]
-    except Exception:
-        cfg["productos_favoritos"] = []
     return cfg
 
 
@@ -427,27 +422,6 @@ def actualizar_configuracion(
             fila.valor = nombre
         else:
             db.add(models.Configuracion(clave="nombre_tienda", valor=nombre))
-
-    if "productos_favoritos" in cambios:
-        ids = cambios["productos_favoritos"] or []
-        if not isinstance(ids, list):
-            raise HTTPException(400, "productos_favoritos debe ser una lista de IDs")
-        limpios = []
-        for x in ids:
-            try:
-                limpios.append(int(x))
-            except (TypeError, ValueError):
-                continue
-        # Máximo 12 favoritos para no saturar la pantalla de venta
-        limpios = limpios[:12]
-        valor = json.dumps(limpios)
-        fila = db.query(models.Configuracion).get("productos_favoritos")
-        if fila:
-            fila.valor = valor
-        else:
-            db.add(models.Configuracion(clave="productos_favoritos", valor=valor))
-
-    if cambios:
         db.commit()
 
     return _leer_config(db)
@@ -588,9 +562,10 @@ def _calcular_sugerencia_pedido(db: Session, proveedor: models.Proveedor):
         # una cantidad fraccionaria, así que se redondea hacia arriba a la
         # pieza completa siguiente. Si es a granel (kg), sí se deja con
         # decimales porque el proveedor puede surtir por kilogramo parcial.
-        if p.unidad_venta in UNIDADES_ENTERAS:
+        _tipo_p = _tipo_unidad(p.unidad_venta)
+        if _tipo_p == "entera":
             sugerido = math.ceil(sugerido) if sugerido > 0 else 0
-        elif p.unidad_venta in UNIDADES_MEDIAS:
+        elif _tipo_p == "media":
             # Redondea hacia arriba al múltiplo de 0.5 más cercano.
             sugerido = math.ceil(sugerido * 2) / 2 if sugerido > 0 else 0
         else:
@@ -683,9 +658,9 @@ def sugerencia_pedido_pdf(
         unidad = _etiqueta_unidad(producto.unidad_venta)
 
         # Cantidad legible: enteros sin decimales inútiles; kg con hasta 3.
-        if producto.unidad_venta in UNIDADES_ENTERAS:
+        if _tipo_unidad(producto.unidad_venta) == "entera":
             cant_txt = f"{int(it.cantidad)} {unidad}"
-        elif producto.unidad_venta in UNIDADES_MEDIAS:
+        elif _tipo_unidad(producto.unidad_venta) == "media":
             cant_txt = f"{round(it.cantidad, 1):g} {unidad}"
         else:
             cant_txt = f"{round(it.cantidad, 3):g} {unidad}"
@@ -925,15 +900,235 @@ def hacer_pedido(
     )
 
 
+
+# ============================================================
+#  CATEGORÍAS DE PRODUCTO
+# ============================================================
+
+def _sembrar_categorias(db: Session) -> None:
+    """
+    Asegura que exista al menos "General" y registra en la tabla
+    categorias cualquier nombre que ya se use en productos (por
+    importaciones o altas anteriores a este módulo).
+    """
+    existentes = {
+        (c.nombre or "").strip().lower(): c
+        for c in db.query(models.Categoria).all()
+    }
+    agregadas = False
+    if "general" not in existentes:
+        db.add(models.Categoria(nombre="General"))
+        existentes["general"] = True
+        agregadas = True
+
+    # Trae categorías usadas en productos que aún no están en la tabla.
+    usadas = (
+        db.query(models.Producto.categoria)
+        .filter(models.Producto.categoria.isnot(None), models.Producto.categoria != "")
+        .distinct()
+        .all()
+    )
+    for (nombre,) in usadas:
+        n = (nombre or "").strip()
+        if not n:
+            continue
+        if n.lower() not in existentes:
+            db.add(models.Categoria(nombre=n))
+            existentes[n.lower()] = True
+            agregadas = True
+    if agregadas:
+        db.commit()
+
+
+def _sembrar_permisos_default_cajero(db: Session) -> None:
+    """
+    Inserta permisos por defecto del cajero SOLO si aún no hay fila para
+    esa clave (no sobrescribe lo que el admin ya configuró).
+
+    Unidades y categorías: agregar/editar activos; eliminar desactivado.
+    """
+    defaults = {
+        "unidades.ver": True,
+        "unidades.agregar": True,
+        "unidades.editar": True,
+        "unidades.eliminar": False,
+        "categorias.ver": True,
+        "categorias.agregar": True,
+        "categorias.editar": True,
+        "categorias.eliminar": False,
+    }
+    existentes = {
+        f.modulo
+        for f in db.query(models.PermisoRol)
+        .filter(models.PermisoRol.rol == "cajero")
+        .all()
+    }
+    agregadas = False
+    for clave, permitido in defaults.items():
+        if clave not in existentes:
+            db.add(models.PermisoRol(rol="cajero", modulo=clave, permitido=permitido))
+            agregadas = True
+    if agregadas:
+        db.commit()
+
+
+
+def _asegurar_categoria(db: Session, nombre: str) -> str:
+    """Si el nombre no está vacío y no existe en categorias, la crea.
+    Devuelve el nombre normalizado (strip)."""
+    n = (nombre or "").strip() or "General"
+    existe = (
+        db.query(models.Categoria)
+        .filter(func.lower(models.Categoria.nombre) == n.lower())
+        .first()
+    )
+    if not existe:
+        db.add(models.Categoria(nombre=n))
+        db.flush()
+    else:
+        n = existe.nombre  # conserva mayúsculas/minúsculas canónicas
+    return n
+
+def _listar_categorias(db: Session) -> list:
+    filas = db.query(models.Categoria).order_by(models.Categoria.nombre).all()
+    conteos = {}
+    for nombre, n in (
+        db.query(models.Producto.categoria, func.count(models.Producto.id))
+        .group_by(models.Producto.categoria)
+        .all()
+    ):
+        if nombre:
+            conteos[(nombre or "").strip().lower()] = n
+    resultado = []
+    for c in filas:
+        resultado.append(schemas.CategoriaOut(
+            id=c.id,
+            nombre=c.nombre,
+            en_uso=int(conteos.get((c.nombre or "").strip().lower(), 0)),
+            fecha_creacion=c.fecha_creacion,
+        ))
+    return resultado
+
+
+
+@app.get("/api/categorias", response_model=List[schemas.CategoriaOut])
+def listar_categorias(
+    db: Session = Depends(get_db),
+    _usuario: models.Usuario = Depends(auth.obtener_usuario_actual),
+):
+    """Lista categorías de producto (para selector y pantalla de gestión)."""
+    _sembrar_categorias(db)
+    return _listar_categorias(db)
+
+
+@app.post("/api/categorias", response_model=schemas.CategoriaOut)
+def crear_categoria(
+    datos: schemas.CategoriaCrear,
+    db: Session = Depends(get_db),
+    _usuario: models.Usuario = Depends(auth.requiere_permiso("categorias.agregar")),
+):
+    nombre = datos.nombre.strip()
+    existente = (
+        db.query(models.Categoria)
+        .filter(func.lower(models.Categoria.nombre) == nombre.lower())
+        .first()
+    )
+    if existente:
+        raise HTTPException(400, f'Ya existe la categoría "{existente.nombre}"')
+    cat = models.Categoria(nombre=nombre)
+    db.add(cat)
+    db.commit()
+    db.refresh(cat)
+    return schemas.CategoriaOut(id=cat.id, nombre=cat.nombre, en_uso=0, fecha_creacion=cat.fecha_creacion)
+
+
+@app.put("/api/categorias/{categoria_id}", response_model=schemas.CategoriaOut)
+def actualizar_categoria(
+    categoria_id: int,
+    datos: schemas.CategoriaActualizar,
+    db: Session = Depends(get_db),
+    _usuario: models.Usuario = Depends(auth.requiere_permiso("categorias.editar")),
+):
+    cat = db.query(models.Categoria).get(categoria_id)
+    if not cat:
+        raise HTTPException(404, "Categoría no encontrada")
+    try:
+        cambios = datos.dict(exclude_unset=True)
+    except Exception:
+        cambios = datos.model_dump(exclude_unset=True)
+    if "nombre" not in cambios or not cambios["nombre"]:
+        raise HTTPException(400, "Indica el nuevo nombre de la categoría")
+    nuevo = cambios["nombre"].strip()
+    conflicto = (
+        db.query(models.Categoria)
+        .filter(
+            func.lower(models.Categoria.nombre) == nuevo.lower(),
+            models.Categoria.id != categoria_id,
+        )
+        .first()
+    )
+    if conflicto:
+        raise HTTPException(400, f'Ya existe la categoría "{conflicto.nombre}"')
+
+    nombre_anterior = cat.nombre
+    cat.nombre = nuevo
+    # Actualiza productos que tenían el nombre viejo.
+    if nombre_anterior != nuevo:
+        db.query(models.Producto).filter(models.Producto.categoria == nombre_anterior).update(
+            {models.Producto.categoria: nuevo}, synchronize_session=False
+        )
+    db.commit()
+    db.refresh(cat)
+    en_uso = (
+        db.query(func.count(models.Producto.id))
+        .filter(models.Producto.categoria == cat.nombre)
+        .scalar()
+        or 0
+    )
+    return schemas.CategoriaOut(
+        id=cat.id, nombre=cat.nombre, en_uso=int(en_uso), fecha_creacion=cat.fecha_creacion
+    )
+
+
+@app.delete("/api/categorias/{categoria_id}")
+def eliminar_categoria(
+    categoria_id: int,
+    db: Session = Depends(get_db),
+    _usuario: models.Usuario = Depends(auth.requiere_permiso("categorias.eliminar")),
+):
+    cat = db.query(models.Categoria).get(categoria_id)
+    if not cat:
+        raise HTTPException(404, "Categoría no encontrada")
+    n_uso = (
+        db.query(func.count(models.Producto.id))
+        .filter(models.Producto.categoria == cat.nombre)
+        .scalar()
+        or 0
+    )
+    if n_uso:
+        raise HTTPException(
+            400,
+            f'No se puede eliminar: hay {n_uso} producto(s) en la categoría "{cat.nombre}". '
+            f"Cámbiales la categoría antes de borrarla.",
+        )
+    if (cat.nombre or "").strip().lower() == "general":
+        # Permitimos borrar General solo si no hay productos; se puede volver a sembrar.
+        pass
+    nombre = cat.nombre
+    db.delete(cat)
+    db.commit()
+    return {"ok": True, "mensaje": f'Categoría "{nombre}" eliminada'}
+
+
 # ============================================================
 #  PRODUCTOS  (alta, baja, edición, consulta)
 # ============================================================
 
-UNIDADES_VENTA_VALIDAS = ("pieza", "kg", "litro", "caja", "paquete", "bolsa")
+UNIDADES_VENTA_FIJAS = ("pieza", "kg", "litro", "caja", "paquete", "bolsa")
 # Enteras: solo enteros. Continuas: cualquier decimal. Medias: múltiplos de 0.5.
-UNIDADES_ENTERAS = frozenset({"pieza"})
-UNIDADES_CONTINUAS = frozenset({"kg", "litro"})
-UNIDADES_MEDIAS = frozenset({"caja", "paquete", "bolsa"})
+UNIDADES_ENTERAS_FIJAS = frozenset({"pieza"})
+UNIDADES_CONTINUAS_FIJAS = frozenset({"kg", "litro"})
+UNIDADES_MEDIAS_FIJAS = frozenset({"caja", "paquete", "bolsa"})
 _ETIQUETA_UNIDAD = {
     "pieza": "pza",
     "kg": "kg",
@@ -950,15 +1145,108 @@ _ETIQUETA_UNIDAD_EXPORT = {
     "paquete": "Paquete",
     "bolsa": "Bolsa",
 }
+_PLURAL_UNIDAD = {
+    "pieza": "Piezas",
+    "kg": "Kg",
+    "litro": "Litros",
+    "caja": "Cajas",
+    "paquete": "Paquetes",
+    "bolsa": "Bolsas",
+}
+
+# ------------------------------------------------------------------
+# Unidades de venta PERSONALIZADAS (agregadas por el usuario desde el
+# alta de producto, ej. "metro", "galón"). Se guardan en la tabla
+# `unidades_venta` y se mantienen también en este diccionario en memoria
+# (clave -> {nombre, plural, abreviatura, tipo}) para no tener que pasar
+# `db` a cada función que arma etiquetas/valida cantidades, igual que las
+# unidades fijas de arriba, que también viven en memoria.
+# ------------------------------------------------------------------
+UNIDADES_PERSONALIZADAS: dict = {}
+
+
+# Unidades "del sistema" que se siembran en la tabla unidades_venta al
+# arrancar. Una vez en la BD, el usuario puede editarlas o borrarlas igual
+# que las personalizadas (si ningún producto las usa).
+_UNIDADES_SISTEMA_SEED = (
+    {"clave": "pieza", "nombre": "Pieza", "plural": "Piezas", "abreviatura": "pza", "tipo": "entera"},
+    {"clave": "kg", "nombre": "Kilogramo", "plural": "Kg", "abreviatura": "kg", "tipo": "continua"},
+    {"clave": "litro", "nombre": "Litro", "plural": "Litros", "abreviatura": "L", "tipo": "continua"},
+    {"clave": "caja", "nombre": "Caja", "plural": "Cajas", "abreviatura": "caja", "tipo": "media"},
+    {"clave": "paquete", "nombre": "Paquete", "plural": "Paquetes", "abreviatura": "paq", "tipo": "media"},
+    {"clave": "bolsa", "nombre": "Bolsa", "plural": "Bolsas", "abreviatura": "bolsa", "tipo": "media"},
+)
+_CLAVES_SISTEMA = frozenset(u["clave"] for u in _UNIDADES_SISTEMA_SEED)
+
+
+def _sembrar_unidades_sistema(db: Session) -> None:
+    """Inserta las unidades fijas del sistema si aún no están en la BD.
+    No sobrescribe si el usuario ya las editó (misma clave)."""
+    existentes = {u.clave for u in db.query(models.UnidadVenta).all()}
+    agregadas = False
+    for seed in _UNIDADES_SISTEMA_SEED:
+        if seed["clave"] not in existentes:
+            db.add(models.UnidadVenta(**seed))
+            agregadas = True
+    if agregadas:
+        db.commit()
+
+
+def _cargar_unidades_personalizadas(db: Session) -> None:
+    """Refresca UNIDADES_PERSONALIZADAS desde la base de datos (todas las
+    unidades, sistema + personalizadas). El nombre histórico se mantiene
+    para no tocar cada llamada."""
+    UNIDADES_PERSONALIZADAS.clear()
+    for u in db.query(models.UnidadVenta).all():
+        UNIDADES_PERSONALIZADAS[u.clave] = {
+            "nombre": u.nombre,
+            "plural": u.plural,
+            "abreviatura": u.abreviatura,
+            "tipo": u.tipo,
+            "id": u.id,
+        }
+
+
+def _unidad_valida(unidad: str) -> bool:
+    # Preferimos lo que está en la BD/cache; las fijas hardcodeadas quedan
+    # como respaldo por si aún no se sembraron (arranque muy temprano).
+    if unidad in UNIDADES_PERSONALIZADAS:
+        return True
+    return unidad in UNIDADES_VENTA_FIJAS
+
+
+def _tipo_unidad(unidad: str) -> str:
+    """entera | media | continua. Por defecto 'entera' si la unidad no se reconoce."""
+    personalizada = UNIDADES_PERSONALIZADAS.get(unidad)
+    if personalizada:
+        return personalizada["tipo"]
+    if unidad in UNIDADES_ENTERAS_FIJAS:
+        return "entera"
+    if unidad in UNIDADES_MEDIAS_FIJAS:
+        return "media"
+    if unidad in UNIDADES_CONTINUAS_FIJAS:
+        return "continua"
+    return "entera"
+
+
+def _slugificar_unidad(nombre: str) -> str:
+    """Convierte el nombre de una unidad nueva en una 'clave' interna simple
+    (minúsculas, sin acentos ni espacios) para guardar en unidad_venta."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode()
+    t = t.strip().lower()
+    t = re.sub(r"[^a-z0-9]+", "_", t).strip("_")
+    return t or "unidad"
 
 
 def _validar_cantidad_unidad(unidad: str, cantidad: float, nombre_producto: str = "") -> None:
     """Lanza HTTPException 400 si la cantidad no es compatible con la unidad."""
     pref = f"'{nombre_producto}' " if nombre_producto else ""
-    if unidad in UNIDADES_ENTERAS:
+    tipo = _tipo_unidad(unidad)
+    if tipo == "entera":
         if cantidad != int(cantidad):
-            raise HTTPException(400, f"{pref}se vende por pieza, la cantidad debe ser un número entero")
-    elif unidad in UNIDADES_MEDIAS:
+            raise HTTPException(400, f"{pref}se vende por {unidad}, la cantidad debe ser un número entero")
+    elif tipo == "media":
         # 0.5, 1, 1.5, 2… (tolerancia flotante)
         if abs(cantidad * 2 - round(cantidad * 2)) > 1e-6:
             raise HTTPException(
@@ -969,15 +1257,73 @@ def _validar_cantidad_unidad(unidad: str, cantidad: float, nombre_producto: str 
 
 
 def _etiqueta_unidad(unidad: str) -> str:
-    return _ETIQUETA_UNIDAD.get(unidad or "pieza", unidad or "pza")
+    personalizada = UNIDADES_PERSONALIZADAS.get(unidad)
+    if personalizada:
+        return personalizada["abreviatura"]
+    if unidad in _ETIQUETA_UNIDAD:
+        return _ETIQUETA_UNIDAD[unidad]
+    return unidad or "pza"
 
 
 def _etiqueta_unidad_export(unidad: str) -> str:
-    return _ETIQUETA_UNIDAD_EXPORT.get(unidad or "pieza", (unidad or "pieza").capitalize())
+    personalizada = UNIDADES_PERSONALIZADAS.get(unidad)
+    if personalizada:
+        return personalizada["nombre"]
+    if unidad in _ETIQUETA_UNIDAD_EXPORT:
+        return _ETIQUETA_UNIDAD_EXPORT[unidad]
+    return (unidad or "pieza").capitalize()
+
+
+def _plural_unidad(unidad: str) -> str:
+    personalizada = UNIDADES_PERSONALIZADAS.get(unidad)
+    if personalizada:
+        return personalizada["plural"]
+    if unidad in _PLURAL_UNIDAD:
+        return _PLURAL_UNIDAD[unidad]
+    return (unidad or "pieza").capitalize()
+
+
+def _listar_todas_unidades(db: Session = None) -> list:
+    """Lista todas las unidades de venta desde la BD (sistema + personalizadas).
+    Si se pasa `db`, calcula también cuántos productos usan cada una."""
+    filas = []
+    # Orden: primero las del sistema en el orden original, luego el resto por nombre.
+    orden_sistema = {c: i for i, c in enumerate(u["clave"] for u in _UNIDADES_SISTEMA_SEED)}
+    items = list(UNIDADES_PERSONALIZADAS.items())
+    items.sort(key=lambda kv: (orden_sistema.get(kv[0], 1000), kv[1]["nombre"].lower()))
+
+    conteos = {}
+    if db is not None:
+        for clave, n in (
+            db.query(models.Producto.unidad_venta, func.count(models.Producto.id))
+            .group_by(models.Producto.unidad_venta)
+            .all()
+        ):
+            conteos[clave] = n
+
+    for clave, datos in items:
+        filas.append({
+            "id": datos.get("id"),
+            "clave": clave,
+            "nombre": datos["nombre"],
+            "plural": datos["plural"],
+            "abreviatura": datos["abreviatura"],
+            "tipo": datos["tipo"],
+            "personalizada": clave not in _CLAVES_SISTEMA,
+            "en_uso": int(conteos.get(clave, 0)),
+        })
+
+    # Respaldo si aún no hay nada en cache (muy temprano / BD vacía).
+    if not filas:
+        for seed in _UNIDADES_SISTEMA_SEED:
+            filas.append({**seed, "id": None, "personalizada": False, "en_uso": 0})
+    return filas
 
 
 def _parse_unidad_excel(texto) -> str:
-    """Normaliza el texto de la columna 'Unidad de venta' del Excel."""
+    """Normaliza el texto de la columna 'Unidad de venta' del Excel.
+    Reconoce las unidades fijas del sistema y también cualquier unidad
+    personalizada que el usuario haya agregado (por clave, nombre o plural)."""
     if texto is None:
         return "pieza"
     t = str(texto).strip().lower()
@@ -993,6 +1339,10 @@ def _parse_unidad_excel(texto) -> str:
         return "bolsa"
     if t in ("pieza", "piezas", "pza", "pzas", "unidad", "unidades"):
         return "pieza"
+    for clave, datos in UNIDADES_PERSONALIZADAS.items():
+        candidatos = {clave.lower(), datos["nombre"].lower(), datos["plural"].lower(), datos["abreviatura"].lower()}
+        if t in candidatos:
+            return clave
     return "pieza"
 
 
@@ -1011,19 +1361,170 @@ def _generar_codigo_interno(db: Session) -> str:
             return candidato
 
 
+@app.get("/api/unidades-venta", response_model=List[schemas.UnidadVentaOut])
+def listar_unidades_venta(
+    db: Session = Depends(get_db),
+    _usuario: models.Usuario = Depends(auth.obtener_usuario_actual),
+):
+    """
+    Lista todas las unidades de venta (del sistema y personalizadas).
+    Incluye cuántos productos usan cada una para la pantalla de gestión.
+    """
+    # Asegura que las del sistema existan (por si arrancó sin admin seed).
+    _sembrar_unidades_sistema(db)
+    _cargar_unidades_personalizadas(db)
+    return _listar_todas_unidades(db)
+
+
+@app.post("/api/unidades-venta", response_model=schemas.UnidadVentaOut)
+def crear_unidad_venta(
+    datos: schemas.UnidadVentaCrear,
+    db: Session = Depends(get_db),
+    _usuario: models.Usuario = Depends(auth.requiere_permiso("unidades.agregar", "productos.agregar")),
+):
+    """
+    Agrega una nueva unidad de venta (ej. "Metro", "Galón"). Queda
+    disponible de inmediato en el selector y en el cuadro de cantidad.
+    """
+    clave = _slugificar_unidad(datos.nombre)
+    existente = db.query(models.UnidadVenta).filter(models.UnidadVenta.clave == clave).first()
+    if existente:
+        raise HTTPException(400, f'Ya existe una unidad llamada "{existente.nombre}"')
+    # También bloquear si coincide con una clave de sistema aún no sembrada
+    if clave in UNIDADES_PERSONALIZADAS:
+        raise HTTPException(400, f'Ya existe una unidad con la clave "{clave}"')
+
+    nombre = datos.nombre.strip()
+    plural = (datos.plural or "").strip() or (nombre + "s")
+    abreviatura = (datos.abreviatura or "").strip() or nombre[:3].lower()
+
+    unidad = models.UnidadVenta(
+        clave=clave,
+        nombre=nombre,
+        plural=plural,
+        abreviatura=abreviatura,
+        tipo=datos.tipo,
+    )
+    db.add(unidad)
+    db.commit()
+    db.refresh(unidad)
+
+    _cargar_unidades_personalizadas(db)
+
+    return schemas.UnidadVentaOut(
+        id=unidad.id,
+        clave=unidad.clave,
+        nombre=unidad.nombre,
+        plural=unidad.plural,
+        abreviatura=unidad.abreviatura,
+        tipo=unidad.tipo,
+        personalizada=unidad.clave not in _CLAVES_SISTEMA,
+        en_uso=0,
+    )
+
+
+@app.put("/api/unidades-venta/{unidad_id}", response_model=schemas.UnidadVentaOut)
+def actualizar_unidad_venta(
+    unidad_id: int,
+    datos: schemas.UnidadVentaActualizar,
+    db: Session = Depends(get_db),
+    _usuario: models.Usuario = Depends(auth.requiere_permiso("unidades.editar", "productos.editar")),
+):
+    """
+    Edita nombre, plural, abreviatura o tipo de cualquier unidad
+    (incluidas las del sistema). La clave interna no cambia, así los
+    productos que ya la usan siguen vinculados.
+    """
+    unidad = db.query(models.UnidadVenta).get(unidad_id)
+    if not unidad:
+        raise HTTPException(404, "Unidad no encontrada")
+
+    try:
+        cambios = datos.dict(exclude_unset=True)
+    except Exception:
+        cambios = datos.model_dump(exclude_unset=True)
+
+    if "nombre" in cambios and cambios["nombre"]:
+        unidad.nombre = cambios["nombre"].strip()
+    if "plural" in cambios:
+        pl = (cambios["plural"] or "").strip()
+        unidad.plural = pl or (unidad.nombre + "s")
+    if "abreviatura" in cambios:
+        ab = (cambios["abreviatura"] or "").strip()
+        unidad.abreviatura = ab or unidad.nombre[:3].lower()
+    if "tipo" in cambios and cambios["tipo"]:
+        unidad.tipo = cambios["tipo"]
+
+    db.commit()
+    db.refresh(unidad)
+    _cargar_unidades_personalizadas(db)
+
+    en_uso = (
+        db.query(func.count(models.Producto.id))
+        .filter(models.Producto.unidad_venta == unidad.clave)
+        .scalar()
+        or 0
+    )
+    return schemas.UnidadVentaOut(
+        id=unidad.id,
+        clave=unidad.clave,
+        nombre=unidad.nombre,
+        plural=unidad.plural,
+        abreviatura=unidad.abreviatura,
+        tipo=unidad.tipo,
+        personalizada=unidad.clave not in _CLAVES_SISTEMA,
+        en_uso=int(en_uso),
+    )
+
+
+@app.delete("/api/unidades-venta/{unidad_id}")
+def eliminar_unidad_venta(
+    unidad_id: int,
+    db: Session = Depends(get_db),
+    _usuario: models.Usuario = Depends(auth.requiere_permiso("unidades.eliminar")),
+):
+    """
+    Elimina cualquier unidad de venta (también las del sistema), solo si
+    ningún producto la está usando. Si hay productos, hay que cambiarles
+    la unidad antes de borrarla.
+    """
+    unidad = db.query(models.UnidadVenta).get(unidad_id)
+    if not unidad:
+        raise HTTPException(404, "Unidad no encontrada")
+    n_uso = (
+        db.query(func.count(models.Producto.id))
+        .filter(models.Producto.unidad_venta == unidad.clave)
+        .scalar()
+        or 0
+    )
+    if n_uso:
+        raise HTTPException(
+            400,
+            f'No se puede eliminar: hay {n_uso} producto(s) que usan la unidad "{unidad.nombre}". '
+            f"Cámbiales la unidad de venta antes de borrarla.",
+        )
+    nombre = unidad.nombre
+    db.delete(unidad)
+    db.commit()
+    _cargar_unidades_personalizadas(db)
+    return {"ok": True, "mensaje": f'Unidad "{nombre}" eliminada'}
+
+
 @app.post("/api/productos", response_model=schemas.ProductoOut)
 def crear_producto(
     producto: schemas.ProductoCrear,
     db: Session = Depends(get_db),
     _usuario: models.Usuario = Depends(auth.requiere_permiso("productos.agregar")),
 ):
-    if producto.unidad_venta not in UNIDADES_VENTA_VALIDAS:
+    if not _unidad_valida(producto.unidad_venta):
         raise HTTPException(
             400,
-            "unidad_venta debe ser: pieza, kg, litro, caja, paquete o bolsa",
+            "unidad_venta debe ser una unidad válida: pieza, kg, litro, caja, paquete, bolsa "
+            "o una unidad personalizada ya agregada en el sistema",
         )
 
     datos = producto.dict()
+    datos["categoria"] = _asegurar_categoria(db, datos.get("categoria") or "General")
 
     if datos.get("proveedor_id") is not None:
         if not db.query(models.Proveedor).get(datos["proveedor_id"]):
@@ -1248,6 +1749,8 @@ def actualizar_producto(
     if cambios.get("proveedor_id") is not None:
         if not db.query(models.Proveedor).get(cambios["proveedor_id"]):
             raise HTTPException(400, "El proveedor indicado no existe")
+    if "categoria" in cambios and cambios["categoria"] is not None:
+        cambios["categoria"] = _asegurar_categoria(db, cambios["categoria"] or "General")
 
     for campo, valor in cambios.items():
         setattr(producto, campo, valor)
@@ -1338,19 +1841,53 @@ def _autoajustar_columnas(hoja):
 
 @app.get("/api/productos/plantilla-excel")
 def plantilla_excel_productos(
+    db: Session = Depends(get_db),
     _usuario: models.Usuario = Depends(auth.requiere_permiso("productos.importar")),
 ):
-    """Descarga una plantilla en blanco (con un ejemplo) para importar productos."""
+    """
+    Descarga una plantilla en blanco (con un ejemplo) para importar productos.
+
+    Incluye una fila de ejemplo por CADA unidad de venta que existe en el
+    sistema: las fijas (pieza, kg, litro, caja, paquete, bolsa) y también
+    cualquier unidad personalizada que el usuario haya agregado (ej.
+    "metro", "galón"), para que quede claro qué texto poner en la columna
+    "Unidad de venta" de cada una.
+    """
     from openpyxl import Workbook
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Productos"
     ws.append(_ENCABEZADOS_PRODUCTOS)
-    ws.append(["7501234567890", "Sí", "Producto de ejemplo", "Descripción opcional", "General", 25.50, 15.00, 10, 2, "Pieza", "Coca-Cola FEMSA"])
-    ws.append(["", "No", "Producto a granel de ejemplo", "Se vende suelto, sin escanear", "General", 18.00, 10.00, 5, 1, "Kg", ""])
-    ws.append(["", "No", "Leche a granel de ejemplo", "Se vende por litro", "Lácteos", 22.00, 14.00, 20, 5, "Litro", ""])
-    ws.append(["7509876543210", "Sí", "Caja de ejemplo", "Se vende por caja", "General", 120.00, 90.00, 8, 2, "Caja", ""])
+
+    # Ejemplos fijos "reales" para las unidades base del sistema.
+    ejemplos_fijos = {
+        "pieza": ["7501234567890", "Sí", "Producto de ejemplo", "Descripción opcional", "General", 25.50, 15.00, 10, 2],
+        "kg": ["", "No", "Producto a granel de ejemplo", "Se vende suelto, sin escanear", "General", 18.00, 10.00, 5, 1],
+        "litro": ["", "No", "Leche a granel de ejemplo", "Se vende por litro", "Lácteos", 22.00, 14.00, 20, 5],
+        "caja": ["7509876543210", "Sí", "Caja de ejemplo", "Se vende por caja", "General", 120.00, 90.00, 8, 2],
+        "paquete": ["7501112223334", "Sí", "Paquete de ejemplo", "Se vende por paquete", "General", 45.00, 30.00, 12, 3],
+        "bolsa": ["7504445556667", "Sí", "Bolsa de ejemplo", "Se vende por bolsa", "General", 35.00, 22.00, 15, 3],
+    }
+
+    for u in _listar_todas_unidades(db):
+        etiqueta_excel = _etiqueta_unidad_export(u["clave"])
+        if u["clave"] in ejemplos_fijos:
+            fila = list(ejemplos_fijos[u["clave"]]) + [etiqueta_excel, ""]
+        else:
+            # Unidad personalizada: cantidad de ejemplo según el tipo
+            # (entera=1, media=0.5, continua=1.5), sin código de barras
+            # real (a granel), igual que kg/litro.
+            cantidad_ejemplo = {"entera": 1, "media": 0.5, "continua": 1.5}.get(u["tipo"], 1)
+            fila = [
+                "", "No",
+                f"Producto de ejemplo por {u['nombre'].lower()}",
+                f"Se vende por {u['nombre'].lower()} (unidad agregada por el usuario)",
+                "General", 30.00, 18.00, 10, cantidad_ejemplo,
+                etiqueta_excel, "",
+            ]
+        ws.append(fila)
+
     _estilizar_encabezado(ws)
     _autoajustar_columnas(ws)
 
@@ -1507,7 +2044,7 @@ def importar_productos_excel(
         datos_comunes = {
             "nombre": nombre,
             "descripcion": str(valor("descripcion", "") or ""),
-            "categoria": str(valor("categoria", "General") or "General"),
+            "categoria": _asegurar_categoria(db, str(valor("categoria", "General") or "General")),
             "precio_venta": precio,
             "costo": costo,
             "stock_minimo": stock_minimo,

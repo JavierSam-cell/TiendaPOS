@@ -95,7 +95,111 @@ class ProductoOut(ProductoBase):
         from_attributes = True
 
 
+# ---------- Unidad de venta (personalizada) ----------
+class UnidadVentaCrear(BaseModel):
+    nombre: str = Field(min_length=1)           # ej. "Metro"
+    plural: Optional[str] = None                # ej. "Metros" (si se omite, se infiere)
+    abreviatura: Optional[str] = None           # ej. "m" (si se omite, se infiere)
+    tipo: str = "entera"                        # entera | media | continua
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_no_vacio(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("El nombre de la unidad no puede estar vacío")
+        return v
+
+    @field_validator("tipo")
+    @classmethod
+    def tipo_valido(cls, v: str) -> str:
+        if v not in ("entera", "media", "continua"):
+            raise ValueError("tipo debe ser: entera, media o continua")
+        return v
+
+
+class UnidadVentaActualizar(BaseModel):
+    nombre: Optional[str] = None
+    plural: Optional[str] = None
+    abreviatura: Optional[str] = None
+    tipo: Optional[str] = None
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_no_vacio_si_viene(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("El nombre de la unidad no puede estar vacío")
+        return v
+
+    @field_validator("tipo")
+    @classmethod
+    def tipo_valido_si_viene(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if v not in ("entera", "media", "continua"):
+            raise ValueError("tipo debe ser: entera, media o continua")
+        return v
+
+
+class UnidadVentaOut(BaseModel):
+    id: Optional[int] = None
+    clave: str
+    nombre: str
+    plural: str
+    abreviatura: str
+    tipo: str
+    personalizada: bool = True  # False = sembrada como unidad del sistema (sigue editable)
+    en_uso: int = 0  # cuántos productos la usan (para la UI de borrado)
+
+    class Config:
+        from_attributes = True
+
+
 # ---------- Proveedor ----------
+# ---------- Categoría de producto ----------
+class CategoriaCrear(BaseModel):
+    nombre: str = Field(min_length=1)
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_no_vacio(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("El nombre de la categoría no puede estar vacío")
+        if len(v) > 60:
+            raise ValueError("El nombre de la categoría es demasiado largo (máx. 60)")
+        return v
+
+
+class CategoriaActualizar(BaseModel):
+    nombre: Optional[str] = None
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_no_vacio_si_viene(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("El nombre de la categoría no puede estar vacío")
+        if len(v) > 60:
+            raise ValueError("El nombre de la categoría es demasiado largo (máx. 60)")
+        return v
+
+
+class CategoriaOut(BaseModel):
+    id: int
+    nombre: str
+    en_uso: int = 0
+    fecha_creacion: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class ProveedorBase(BaseModel):
     nombre: str
     contacto: Optional[str] = ""
@@ -304,6 +408,18 @@ ACCIONES_POR_MODULO = {
         ("baja", "Dar de baja / reactivar"),
         ("importar", "Importar / exportar Excel"),
     ],
+    "unidades": [
+        ("ver", "Ver unidades de venta"),
+        ("agregar", "Agregar unidades de venta"),
+        ("editar", "Editar unidades de venta"),
+        ("eliminar", "Eliminar unidades de venta"),
+    ],
+    "categorias": [
+        ("ver", "Ver categorías"),
+        ("agregar", "Agregar categorías"),
+        ("editar", "Editar categorías"),
+        ("eliminar", "Eliminar categorías"),
+    ],
     "inventario": [
         ("ver", "Ver movimientos y alertas de stock"),
         ("movimiento", "Registrar entradas / salidas / ajustes"),
@@ -359,13 +475,10 @@ class PermisosActualizar(BaseModel):
 # ---------- Configuración del negocio ----------
 class ConfiguracionOut(BaseModel):
     nombre_tienda: str = "Mi Tienda"
-    # IDs de productos fijos en la pantalla Vender (atajos del cajero).
-    productos_favoritos: List[int] = []
 
 
 class ConfiguracionActualizar(BaseModel):
     nombre_tienda: Optional[str] = None
-    productos_favoritos: Optional[List[int]] = None
 
 # ---------- Otros gastos (renta, luz, sueldos, etc.) ----------
 class OtroGastoBase(BaseModel):

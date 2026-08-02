@@ -411,6 +411,13 @@
     max-width: 90vw;
     text-align: center;
   }
+  #esc-grid-venta-rapida {
+    /* En el celular siempre van 2 columnas (3 filas para 6 productos),
+       sin importar qué tan angosta sea la pantalla: el grid compartido con
+       la PC (.grid-venta-rapida) cae a 1 columna debajo de 380px, y casi
+       todos los celulares están por debajo de ese ancho. */
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
   #toast-esc.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   #toast-esc.error { background: var(--danger); }
 </style>
@@ -445,6 +452,12 @@
     <div class="esc-buscar">
       <label for="esc-buscar-input">Buscar producto por nombre o código</label>
       <input id="esc-buscar-input" placeholder="Ej. coca, huevo, 750123…" autocomplete="off" autocapitalize="none">
+
+      <div id="esc-venta-rapida">
+        <p id="esc-venta-rapida-subtitulo" class="venta-rapida-subtitulo">Los 6 más vendidos</p>
+        <div id="esc-grid-venta-rapida" class="grid-venta-rapida"></div>
+      </div>
+
       <div class="esc-buscar-resultados" id="esc-buscar-resultados"></div>
       <p class="esc-buscar-vacio" id="esc-buscar-vacio" style="display:none">No se encontró ningún producto con ese nombre o código.</p>
     </div>
