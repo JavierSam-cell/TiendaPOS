@@ -359,10 +359,13 @@ class PermisosActualizar(BaseModel):
 # ---------- Configuración del negocio ----------
 class ConfiguracionOut(BaseModel):
     nombre_tienda: str = "Mi Tienda"
+    # IDs de productos fijos en la pantalla Vender (atajos del cajero).
+    productos_favoritos: List[int] = []
 
 
 class ConfiguracionActualizar(BaseModel):
     nombre_tienda: Optional[str] = None
+    productos_favoritos: Optional[List[int]] = None
 
 # ---------- Otros gastos (renta, luz, sueldos, etc.) ----------
 class OtroGastoBase(BaseModel):

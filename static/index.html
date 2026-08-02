@@ -290,6 +290,7 @@
           <!-- Buscador global: nombre o código (lo más usado cuando no se puede escanear) -->
           <div class="panel" id="panel-venta-rapida">
             <h2>Buscar producto</h2>
+            <p class="atajos-venta-hint">Atajos: <kbd>F2</kbd> buscar · <kbd>F12</kbd> / <kbd>Enter</kbd> cobrar · <kbd>Esc</kbd> cerrar</p>
             <div class="field">
               <label for="buscar-venta-rapida">Nombre o código de barras</label>
               <input
@@ -298,6 +299,10 @@
                 autocomplete="off"
                 autofocus
               >
+            </div>
+            <div id="bloque-favoritos-venta" style="display:none">
+              <p class="venta-rapida-subtitulo">Favoritos (acceso rápido)</p>
+              <div id="grid-favoritos-venta" class="grid-venta-rapida grid-favoritos-venta"></div>
             </div>
             <p id="venta-rapida-subtitulo" class="venta-rapida-subtitulo">Los 9 más vendidos</p>
             <div id="grid-venta-rapida" class="grid-venta-rapida"></div>
@@ -362,7 +367,7 @@
             <tbody></tbody>
           </table>
 </div>
-          <div class="total-venta">Total: $<span id="total-carrito">0.00</span></div>
+          <div class="total-venta total-venta-grande">Total: $<span id="total-carrito">0.00</span></div>
 
           <div class="linea-pago">
             <label for="metodo-pago">Método de pago</label>
@@ -1019,6 +1024,14 @@
           Aparece en el menú lateral, el login y los encabezados de los reportes.
         </p>
       </div>
+      <div class="field" style="margin-top:18px">
+        <label>Favoritos en pantalla Vender (máx. 12)</label>
+        <p style="color:var(--text-mute); font-size:0.8rem; margin:0 0 8px;">
+          Productos con botón fijo para cobros rápidos en hora pico. Marca los que más vendes.
+        </p>
+        <input id="cfg-favoritos-filtro" placeholder="Filtrar productos…" autocomplete="off" style="margin-bottom:8px">
+        <div id="cfg-favoritos-lista" class="cfg-favoritos-lista"></div>
+      </div>
       <button type="submit" class="btn-primary">Guardar configuración</button>
     </form>
   </div>
@@ -1154,9 +1167,9 @@
     <div class="modal-total">Total: $<span id="modal-venta-total">0.00</span></div>
 
     <div id="cobro-rapido" class="cobro-rapido" style="display:none">
-      <label>Cobro rápido (efectivo)</label>
+      <label>Cobro express — toca el billete o “Pago exacto”</label>
       <div id="billetes-sugeridos" class="billetes-sugeridos"></div>
-      <label for="input-recibido" class="cobro-manual-label">Otra cantidad recibida</label>
+      <label for="input-recibido" class="cobro-manual-label">Otra cantidad recibida (Enter confirma si alcanza)</label>
       <div class="cobro-manual">
         <span>$</span>
         <input type="number" id="input-recibido" placeholder="Otra cantidad recibida" step="0.01" min="0" inputmode="decimal">
@@ -1262,7 +1275,7 @@
   if (btnMostrar) btnMostrar.addEventListener('click', alternar);
 })();
 </script>
-<script src="/static/app.js?v=8"></script>
+<script src="/static/app.js?v=9"></script>
 
 <div id="modal-confirmar" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="modal-confirmar-titulo">
   <div class="modal-box modal-confirm">

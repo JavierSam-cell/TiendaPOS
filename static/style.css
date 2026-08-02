@@ -1859,3 +1859,66 @@ tbody tr:hover { background: #fafbfd; }
 .modal-confirm .modal-acciones {
   margin-top: 22px;
 }
+
+
+/* ---- Cobro rápido / favoritos / atajos venta ---- */
+.total-venta-grande {
+  font-size: 1.85rem !important;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  padding: 10px 0 4px;
+}
+.atajos-venta-hint {
+  color: var(--text-mute);
+  font-size: 0.78rem;
+  margin: -6px 0 12px;
+}
+.atajos-venta-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 4px;
+  font-size: 0.72rem;
+  background: var(--bg-soft, #f4f4f5);
+}
+.grid-favoritos-venta .btn-venta-rapida {
+  border-color: var(--accent);
+  background: var(--accent-soft, #eef6ff);
+  font-weight: 700;
+}
+.chip-billete {
+  min-width: 88px !important;
+  padding: 10px 12px !important;
+}
+.chip-billete .chip-billete-monto {
+  font-size: 1.1rem !important;
+}
+.chip-billete.chip-exacto {
+  border-color: var(--ok, #16a34a);
+  background: #ecfdf5;
+}
+.cobro-resultado.cambio-ok {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.cfg-favoritos-lista {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cfg-favorito-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.cfg-favorito-item:hover { background: var(--bg-soft, #f4f4f5); }
+.cfg-favorito-item input { width: 16px; height: 16px; }

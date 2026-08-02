@@ -3,6 +3,7 @@ Sistema de Punto de Venta - API principal
 Ejecutar con:  uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 """
 import io
+import json
 import math
 import secrets
 import httpx
@@ -372,6 +373,7 @@ def mis_permisos(
 
 _CONFIG_DEFAULTS = {
     "nombre_tienda": "Mi Tienda",
+    "productos_favoritos": "[]",  # JSON: lista de product IDs
 }
 
 
@@ -382,6 +384,14 @@ def _leer_config(db: Session) -> dict:
     for f in filas:
         if f.clave in cfg and f.valor is not None and str(f.valor).strip() != "":
             cfg[f.clave] = str(f.valor).strip()
+    # productos_favoritos se expone como lista de enteros al API
+    try:
+        favs = json.loads(cfg.get("productos_favoritos") or "[]")
+        if not isinstance(favs, list):
+            favs = []
+        cfg["productos_favoritos"] = [int(x) for x in favs if str(x).isdigit() or isinstance(x, int)]
+    except Exception:
+        cfg["productos_favoritos"] = []
     return cfg
 
 
@@ -417,6 +427,27 @@ def actualizar_configuracion(
             fila.valor = nombre
         else:
             db.add(models.Configuracion(clave="nombre_tienda", valor=nombre))
+
+    if "productos_favoritos" in cambios:
+        ids = cambios["productos_favoritos"] or []
+        if not isinstance(ids, list):
+            raise HTTPException(400, "productos_favoritos debe ser una lista de IDs")
+        limpios = []
+        for x in ids:
+            try:
+                limpios.append(int(x))
+            except (TypeError, ValueError):
+                continue
+        # Máximo 12 favoritos para no saturar la pantalla de venta
+        limpios = limpios[:12]
+        valor = json.dumps(limpios)
+        fila = db.query(models.Configuracion).get("productos_favoritos")
+        if fila:
+            fila.valor = valor
+        else:
+            db.add(models.Configuracion(clave="productos_favoritos", valor=valor))
+
+    if cambios:
         db.commit()
 
     return _leer_config(db)
