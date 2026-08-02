@@ -17,18 +17,38 @@ function toast(msg, isError = false) {
  * Fuerza MAYÚSCULAS en tiempo real en inputs/textarea de formularios.
  * Excluye password, number, email, date, tel, etc. y cualquier campo
  * con data-no-uppercase.
+ * NO se aplica a login ni al alta/edición de usuarios (admin/cajero).
  */
 function activarMayusculasEnFormularios(root = document) {
-  const EXCLUIR = new Set([
+  const EXCLUIR_TIPO = new Set([
     "password", "email", "number", "tel", "url", "date", "time",
     "datetime-local", "month", "week", "hidden", "checkbox", "radio",
     "file", "range", "color", "search",
   ]);
+  // IDs de login y gestión de usuarios: se dejan tal cual los escribe el usuario.
+  const EXCLUIR_ID = new Set([
+    "login-username", "login-password",
+    "user-username", "user-nombre", "user-password",
+    "esc-usuario", "esc-password",
+  ]);
+  // Formularios completos donde no queremos mayúsculas automáticas.
+  const EXCLUIR_FORM = new Set([
+    "form-login", "form-usuario", "esc-form-login",
+  ]);
+
   const forzar = (el) => {
     if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return;
     if (el.dataset && el.dataset.noUppercase !== undefined) return;
+    if (el.id && EXCLUIR_ID.has(el.id)) return;
+    const form = el.form || (el.closest && el.closest("form"));
+    if (form && form.id && EXCLUIR_FORM.has(form.id)) return;
+    // autocomplete=username también se respeta (por si hay otro login embebido).
+    const ac = (el.getAttribute("autocomplete") || "").toLowerCase();
+    if (ac === "username" || ac === "current-password" || ac === "new-password") return;
+
     const tipo = (el.type || "text").toLowerCase();
-    if (EXCLUIR.has(tipo)) return;
+    if (EXCLUIR_TIPO.has(tipo)) return;
+
     const inicio = el.selectionStart;
     const fin = el.selectionEnd;
     const upper = String(el.value || "").toLocaleUpperCase("es-MX");
@@ -44,6 +64,7 @@ function activarMayusculasEnFormularios(root = document) {
   root.addEventListener("input", (e) => forzar(e.target), true);
   root.addEventListener("blur", (e) => forzar(e.target), true);
 }
+
 
 // Bip tipo escáner de supermercado al agregar un producto al carrito.
 // Se genera con Web Audio API (sin archivo de sonido externo).
